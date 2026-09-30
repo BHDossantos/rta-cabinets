@@ -1,0 +1,3 @@
+code,family_id,name,kind,status,mounting,width_mm,depth_mm,height_mm,material,finish,purchasability,fulfillment_stage,retail_price_cents,images,tax_category,bom_revision,panel_thickness_mm,edge_treatment,compatible_with,pro_only
+EXAMPLE-B36,FAM-BASE-PLY,"36"" base cabinet body (plywood)",body,draft,base,914.4,609.6,876.3,plywood,,purchasable,A,20000,/img/example-b36.jpg,cabinetry,BOM-REV-?,18,PVC 1mm,,false
+EXAMPLE-F36,FAM-FRONT,"36"" White Shaker front",front,draft,none,914.4,19,762,mdf,White Shaker,purchasable,B,8000,,cabinetry,BOM-REV-?,19,PVC 1mm,FAM-BASE-PLY|FAM-WALL-PLY,false

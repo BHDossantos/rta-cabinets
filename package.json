@@ -1,0 +1,26 @@
+{
+  "name": "rta-cabinets",
+  "private": true,
+  "type": "module",
+  "description": "RTA Cabinet Factory platform: design-to-order-to-factory workflow",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @rta/core && npm run build -w @rta/web",
+    "typecheck": "tsc -p packages/core && tsc -p apps/api && tsc -p apps/web",
+    "test": "vitest run",
+    "dev:api": "npm run dev -w @rta/api",
+    "dev:web": "npm run dev -w @rta/web"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
