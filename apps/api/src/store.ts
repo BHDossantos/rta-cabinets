@@ -7,7 +7,7 @@ import {
   type Catalog, type CartLine, type DesignExpansion, type Lead, type PlanConfig, type ProProfile, type Project,
   type Quote, type Subscription, FIXTURE_PLANS, FIXTURE_POLICY, FIXTURE_PRICE_BOOK, IdempotencyStore, InventoryLedger,
   type PriceBook, type PricingPolicy, WebhookReceiptLog, fixtureCatalog, type CartComparison, type Shipment,
-  type PaymentState, type ManufacturingState,
+  type PaymentState, type ManufacturingState, type Reservation, type StockPosition,
 } from '@rta/core';
 
 export interface User {
@@ -91,12 +91,77 @@ export class Store {
   idempotency = new IdempotencyStore<unknown>();
   webhooks = new WebhookReceiptLog();
   audit: { actorId: string; action: string; objectId: string; at: string; summary?: string }[] = [];
-  private seq = 0;
+  seq = 0;
 
   id(prefix: string): string {
     this.seq += 1;
     return `${prefix}_${this.seq.toString(36).padStart(6, '0')}`;
   }
+
+  /**
+   * Flatten all mutable state into keyed rows for persistence. Catalog, price book,
+   * policy and plans are versioned configuration, not runtime state, so they are
+   * not included.
+   */
+  rows(): EntityRow[] {
+    const out: EntityRow[] = [{ kind: 'meta', id: 'seq', data: this.seq }];
+    const add = <T>(kind: EntityKind, entries: Iterable<[string, T]>) => {
+      for (const [id, data] of entries) out.push({ kind, id, data });
+    };
+    add('user', this.users);
+    add('project', this.projects);
+    add('cart', this.carts);
+    add('order', this.orders);
+    add('subscription', this.subscriptions);
+    add('lead', this.leads);
+    add('referral', this.referrals);
+    add('guest_token', this.guestTokens);
+    add('access_window', this.accessWindows);
+    add('pro', this.pros.map((p) => [p.orgId, p] as [string, ProProfile]));
+    const inv = this.inventory.snapshot();
+    out.push({ kind: 'meta', id: 'inventory_seq', data: inv.seq });
+    add('stock_position', inv.positions.map((p) => [`${p.skuCode}@${p.warehouseId}`, p] as [string, unknown]));
+    add('reservation', inv.reservations.map((r) => [r.id, r] as [string, unknown]));
+    add('idempotency', this.idempotency.snapshot().map((e) => [e.id, e] as [string, unknown]));
+    add('webhook', this.webhooks.snapshot().map((w) => [w.key, w] as [string, unknown]));
+    add('audit', this.audit.map((a, i) => [String(i).padStart(10, '0'), a] as [string, unknown]));
+    return out;
+  }
+
+  static fromRows(rows: EntityRow[]): Store {
+    const s = new Store();
+    const of = <T>(kind: EntityKind) => rows.filter((r) => r.kind === kind).sort((a, b) => a.id.localeCompare(b.id)) as { id: string; data: T }[];
+    s.seq = Number(rows.find((r) => r.kind === 'meta' && r.id === 'seq')?.data ?? 0);
+    s.users = new Map(of<User>('user').map((r) => [r.id, r.data]));
+    s.projects = new Map(of<Project>('project').map((r) => [r.id, r.data]));
+    s.carts = new Map(of<Cart>('cart').map((r) => [r.id, r.data]));
+    s.orders = new Map(of<Order>('order').map((r) => [r.id, r.data]));
+    s.subscriptions = new Map(of<Subscription>('subscription').map((r) => [r.id, r.data]));
+    s.leads = new Map(of<Lead>('lead').map((r) => [r.id, r.data]));
+    s.referrals = new Map(of<FinancingReferral>('referral').map((r) => [r.id, r.data]));
+    s.guestTokens = new Map(of<string>('guest_token').map((r) => [r.id, r.data]));
+    s.accessWindows = new Map(of<string>('access_window').map((r) => [r.id, r.data]));
+    s.pros = of<ProProfile>('pro').map((r) => r.data);
+    s.inventory = InventoryLedger.restore({
+      positions: of<StockPosition>('stock_position').map((r) => r.data),
+      reservations: of<Reservation>('reservation').map((r) => r.data),
+      seq: Number(rows.find((r) => r.kind === 'meta' && r.id === 'inventory_seq')?.data ?? 0),
+    });
+    s.idempotency = IdempotencyStore.restore(of<{ id: string; fingerprint: string; result: unknown }>('idempotency').map((r) => r.data));
+    s.webhooks = WebhookReceiptLog.restore(of<{ key: string; receivedAt: string; type: string }>('webhook').map((r) => r.data));
+    s.audit = of<Store['audit'][number]>('audit').map((r) => r.data);
+    return s;
+  }
+}
+
+export type EntityKind =
+  | 'meta' | 'user' | 'project' | 'cart' | 'order' | 'subscription' | 'lead' | 'referral' | 'guest_token' | 'access_window'
+  | 'pro' | 'stock_position' | 'reservation' | 'idempotency' | 'webhook' | 'audit';
+
+export interface EntityRow {
+  kind: EntityKind;
+  id: string;
+  data: unknown;
 }
 
 /** Seed deterministic demo data (synthetic). */
@@ -117,4 +182,16 @@ export function seedStore(store: Store, now = new Date()): Store {
     store.inventory.setPosition({ skuCode: sku.code, warehouseId: 'wh-main', onHand: sku.kind === 'surface' ? 500 : 40, quarantined: 0, safetyStock: 2, incomingConfirmed: 0, lastSyncedAt: now.toISOString() });
   }
   return store;
+}
+
+/**
+ * Load persisted state, or seed demo data into an empty database. Returns a store
+ * whose contents match what is stored, ready for `createApp({ store, persistence })`.
+ */
+export async function openStore(persistence: { load(): Promise<EntityRow[]>; apply(u: EntityRow[], d: { kind: EntityKind; id: string }[]): Promise<void> }, now = new Date()): Promise<{ store: Store; seeded: boolean }> {
+  const rows = await persistence.load();
+  if (rows.length > 0) return { store: Store.fromRows(rows), seeded: false };
+  const store = seedStore(new Store(), now);
+  await persistence.apply(store.rows(), []);
+  return { store, seeded: true };
 }

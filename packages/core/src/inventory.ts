@@ -113,4 +113,21 @@ export class InventoryLedger {
   reservation(id: string): Reservation | undefined {
     return this.reservations.get(id);
   }
+
+  /** Plain-data copy for persistence. */
+  snapshot(): { positions: StockPosition[]; reservations: Reservation[]; seq: number } {
+    return {
+      positions: [...this.positions.values()].map((p) => ({ ...p })),
+      reservations: [...this.reservations.values()].map((r) => ({ ...r })),
+      seq: this.seq,
+    };
+  }
+
+  static restore(data: { positions: StockPosition[]; reservations: Reservation[]; seq: number }, staleAfterMs?: number): InventoryLedger {
+    const l = new InventoryLedger(staleAfterMs);
+    for (const p of data.positions) l.positions.set(l.key(p.skuCode, p.warehouseId), { ...p });
+    for (const r of data.reservations) l.reservations.set(r.id, { ...r });
+    l.seq = data.seq;
+    return l;
+  }
 }

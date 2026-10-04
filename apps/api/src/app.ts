@@ -8,6 +8,7 @@ import {
   DESIGN_SCHEMA_VERSION, dollars,
 } from '@rta/core';
 import { type Ctx, Router, readBody, send, sendError } from './http';
+import { type Persistence, StateSync } from './persistence';
 import { type Cart, type Order, Store, type User, seedStore } from './store';
 
 export interface AppOptions {
@@ -20,6 +21,11 @@ export interface AppOptions {
   mockPayments?: boolean;
   /** Homeowner editing window in days (D02 proposed default: 30). */
   accessDays?: number;
+  /**
+   * Durable storage. When set, `store` must already reflect what is stored (see
+   * `openStore`), and every mutating request is saved before its response is sent.
+   */
+  persistence?: Persistence;
 }
 
 interface Principal {
@@ -550,21 +556,53 @@ export function createApp(opts: AppOptions = {}) {
   router.on('GET', '/api/config/quote-honor', () => ({ policy: 'reprice_with_acceptance', description: 'Unlocked quotes are repriced at checkout and any change needs customer acceptance.' }));
   void revalidateQuote; // Exposed via core for the quote-lock policy once D08 is decided.
 
+  const sync = opts.persistence ? new StateSync(opts.persistence) : null;
+  sync?.baseline(store.rows());
+  /** Mutating requests run one at a time so each one's changes commit atomically. */
+  let queue: Promise<unknown> = Promise.resolve();
+  const exclusive = <T>(fn: () => Promise<T>): Promise<T> => {
+    const run = queue.then(fn, fn);
+    queue = run.catch(() => undefined);
+    return run;
+  };
+
   async function handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) {
-    try {
-      const url = new URL(req.url ?? '/', 'http://localhost');
-      const matched = router.match(req.method ?? 'GET', url.pathname);
-      if (matched === undefined) return send(res, 404, { error: { code: 'not_found', message: 'Route not found' } });
-      if (matched === 'method_not_allowed') return send(res, 405, { error: { code: 'method_not_allowed', message: 'Method not allowed' } });
-      const rawBody = req.method === 'GET' ? '' : await readBody(req);
-      const isJson = (req.headers['content-type'] ?? '').includes('application/json');
-      const body = rawBody && isJson ? JSON.parse(rawBody) : {};
-      const ctx: Ctx = { req, res, params: matched.params, query: url.searchParams, body, rawBody, headers: req.headers };
-      const result = await matched.handler(ctx);
-      send(res, res.statusCode && res.statusCode !== 200 ? res.statusCode : 200, result);
-    } catch (err) {
-      sendError(res, err);
-    }
+    const mutating = req.method !== 'GET' && req.method !== 'HEAD';
+    const work = async () => {
+      let outcome: { ok: true; result: unknown } | { ok: false; error: unknown };
+      try {
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        const matched = router.match(req.method ?? 'GET', url.pathname);
+        if (matched === undefined) return send(res, 404, { error: { code: 'not_found', message: 'Route not found' } });
+        if (matched === 'method_not_allowed') return send(res, 405, { error: { code: 'method_not_allowed', message: 'Method not allowed' } });
+        const rawBody = mutating ? await readBody(req) : '';
+        const isJson = (req.headers['content-type'] ?? '').includes('application/json');
+        const body = rawBody && isJson ? JSON.parse(rawBody) : {};
+        const ctx: Ctx = { req, res, params: matched.params, query: url.searchParams, body, rawBody, headers: req.headers };
+        outcome = { ok: true, result: await matched.handler(ctx) };
+      } catch (err) {
+        outcome = { ok: false, error: err };
+      }
+      if (sync && mutating) {
+        try {
+          await sync.flush(store.rows());
+        } catch (err) {
+          console.error('Persistence failed; reloading state from the database', err);
+          try {
+            const rows = await opts.persistence!.load();
+            Object.assign(store, Store.fromRows(rows));
+            sync.baseline(store.rows());
+          } catch (reloadErr) {
+            console.error('Reload after persistence failure also failed', reloadErr);
+          }
+          res.statusCode = 200;
+          return sendError(res, new DomainError('provider_unavailable', 'Your change could not be saved. Nothing was changed; please try again.'));
+        }
+      }
+      if (outcome.ok) send(res, res.statusCode && res.statusCode !== 200 ? res.statusCode : 200, outcome.result);
+      else sendError(res, outcome.error);
+    };
+    return mutating && sync ? exclusive(work) : work();
   }
 
   return { store, handle, server: (): Server => createServer(handle) };

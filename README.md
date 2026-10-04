@@ -12,9 +12,19 @@ It implements the **R0 Foundation / R1 controlled-commerce pilot core** from the
 npm install
 npm test            # domain and API test suite
 npm run typecheck
-npm run dev:api     # http://localhost:8787 (in-memory store, seeded demo users)
+npm run dev:api     # http://localhost:8787 (in-memory unless DATABASE_URL is set)
 npm run dev:web     # http://localhost:5173 (proxies /api to :8787)
 ```
+
+### Keeping data across restarts
+
+Set `DATABASE_URL` to a PostgreSQL 14+ database and the API saves every change before it responds. Migrations run automatically on startup, and an empty database is seeded with the demo data:
+
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/rta npm run dev:api
+```
+
+Run one API instance per database; a second instance is refused at startup. Database tests run when `TEST_DATABASE_URL` points at a server where the test user can create databases (CI provides one).
 
 Demo users (a development stub, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
 
@@ -27,7 +37,8 @@ No payment provider is connected yet. In development, the order page has **Simul
 | `packages/core` | Domain engine: units, geometry, layout rules, surfaces, pricing, design-to-cart, inventory, fulfillment, leads, memberships, revisions and release gates |
 | `apps/api` | HTTP API implementing the section 24 contract (projects, revisions, validation, quotes, carts, idempotent checkout, signed webhooks, release, shipments, directory, leads, financing referrals, catalog import staging) |
 | `apps/web` | React storefront, accessible 2D planner (numeric and drag placement), estimate, cart/checkout, installer directory, financing referral |
-| `db/schema.sql` | PostgreSQL system-of-record schema with integrity constraints from section 23 |
+| `db/migrations/` | Migrations applied by the API on startup (pilot persistence) |
+| `db/schema.sql` | Normalized PostgreSQL target schema with the integrity constraints from section 23 |
 | `docs/` | Architecture, decision register, traceability matrix, catalog CSV template, original handoff |
 
 ## Roadmap (from the handoff)

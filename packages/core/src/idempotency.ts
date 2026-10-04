@@ -29,6 +29,16 @@ export class IdempotencyStore<T> {
     this.entries.set(id, { fingerprint, result });
     return { result, replayed: false };
   }
+
+  snapshot(): { id: string; fingerprint: string; result: T }[] {
+    return [...this.entries].map(([id, e]) => ({ id, ...e }));
+  }
+
+  static restore<T>(rows: { id: string; fingerprint: string; result: T }[]): IdempotencyStore<T> {
+    const s = new IdempotencyStore<T>();
+    for (const r of rows) s.entries.set(r.id, { fingerprint: r.fingerprint, result: r.result });
+    return s;
+  }
 }
 
 /** Records provider event IDs; a duplicate delivery has no further effect. */
@@ -45,5 +55,15 @@ export class WebhookReceiptLog {
 
   has(provider: string, eventId: string): boolean {
     return this.seen.has(`${provider}:${eventId}`);
+  }
+
+  snapshot(): { key: string; receivedAt: string; type: string }[] {
+    return [...this.seen].map(([key, v]) => ({ key, ...v }));
+  }
+
+  static restore(rows: { key: string; receivedAt: string; type: string }[]): WebhookReceiptLog {
+    const log = new WebhookReceiptLog();
+    for (const r of rows) log.seen.set(r.key, { receivedAt: r.receivedAt, type: r.type });
+    return log;
   }
 }

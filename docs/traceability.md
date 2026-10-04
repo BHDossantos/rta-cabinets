@@ -74,4 +74,5 @@ Maps the handoff's acceptance criteria (AC) and QA scenarios to code and automat
 | QA12 altered object IDs | Covered (API) |
 | QA13 bodies delivered while fronts are in production | Covered |
 | QA14 dimensions changed after release | Partial (`materialChanges`; no change-order flow yet) |
-| QA15–QA20 ERP replay, claims, refunds, device fallback, a11y audit, restore drill | Not started |
+| QA15–QA19 ERP replay, claims, refunds, device fallback, a11y audit | Not started |
+| QA20 restore drill | Partial: `persistence.test.ts` proves projects, orders, payments, stock, idempotency keys and webhook receipts survive a restart. A backup/restore drill on staging is still to do. |
