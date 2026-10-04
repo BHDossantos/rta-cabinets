@@ -134,6 +134,76 @@ export function PlanView({
           </g>
         );
       })}
+      {doc.openings.map((o) => {
+        const wall = wallById.get(o.wallId);
+        if (!wall) return null;
+        const at = (along: number, inward = 0): Point => ({
+          x: wall.start.x + wall.dir.x * along + wall.inward.x * inward,
+          y: wall.start.y + wall.dir.y * along + wall.inward.y * inward,
+        });
+        const a = toSvg(at(o.offsetMm)), b = toSvg(at(o.offsetMm + o.widthMm));
+        const label = `${o.kind} ${o.id} on wall ${wall.id} at ${formatLength(o.offsetMm, unit)}, ${formatLength(o.widthMm, unit)} wide`;
+        if (o.kind === 'door') {
+          const arc = Array.from({ length: 13 }, (_, i) => {
+            const t = (i / 12) * (Math.PI / 2);
+            const p = toSvg({
+              x: wall.start.x + wall.dir.x * o.offsetMm + o.widthMm * (Math.cos(t) * wall.inward.x + Math.sin(t) * wall.dir.x),
+              y: wall.start.y + wall.dir.y * o.offsetMm + o.widthMm * (Math.cos(t) * wall.inward.y + Math.sin(t) * wall.dir.y),
+            });
+            return `${p.x},${p.y}`;
+          }).join(' ');
+          const leaf = toSvg(at(o.offsetMm, o.widthMm));
+          return (
+            <g key={o.id} className="plan-opening" role="img" aria-label={label}>
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="plan-gap" strokeWidth={fs * 0.5} />
+              <line x1={a.x} y1={a.y} x2={leaf.x} y2={leaf.y} className="plan-door-leaf" strokeWidth={fs * 0.1} />
+              <polyline points={arc} className="plan-door-swing" strokeWidth={fs * 0.07} strokeDasharray={`${fs * 0.3} ${fs * 0.2}`} />
+            </g>
+          );
+        }
+        if (o.kind === 'window') {
+          return (
+            <g key={o.id} className="plan-opening" role="img" aria-label={label}>
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="plan-gap" strokeWidth={fs * 0.5} />
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} className="plan-window" strokeWidth={fs * 0.08} />
+              {[a, b].map((p, i) => <circle key={i} cx={p.x} cy={p.y} r={fs * 0.12} className="plan-window" />)}
+            </g>
+          );
+        }
+        const quad = footprintOnWall(wall, o.offsetMm, o.widthMm, Math.min(o.widthMm, 600));
+        return (
+          <g key={o.id} className="plan-opening" role="img" aria-label={label}>
+            <polygon points={pts(quad)} className="plan-obstruction" strokeWidth={fs * 0.08} />
+          </g>
+        );
+      })}
+      {doc.appliances.map((ap) => {
+        const wall = wallById.get(ap.wallId);
+        if (!wall) return null;
+        const sev = issues?.get(ap.id);
+        const unknown = ap.widthMm === null || ap.depthMm === null || ap.heightMm === null;
+        const label = `Appliance ${ap.id}, ${ap.kind}, on wall ${wall.id}${unknown ? ', dimensions unknown' : ''}${sev ? `, ${SEVERITY_LABEL[sev]}` : ''}`;
+        if (ap.widthMm === null) {
+          const p = toSvg({ x: wall.start.x + wall.dir.x * ap.offsetMm + wall.inward.x * fs * 1.2, y: wall.start.y + wall.dir.y * ap.offsetMm + wall.inward.y * fs * 1.2 });
+          return (
+            <g key={ap.id} className="plan-appliance is-unknown" role="img" aria-label={label}>
+              <circle cx={p.x} cy={p.y} r={fs * 0.9} strokeWidth={fs * 0.08} strokeDasharray={`${fs * 0.3} ${fs * 0.2}`} />
+              <text x={p.x} y={p.y} fontSize={fs * 0.6} textAnchor="middle" dominantBaseline="middle" pointerEvents="none">{ap.id} ?</text>
+            </g>
+          );
+        }
+        const quad = footprintOnWall(wall, ap.offsetMm, ap.widthMm, ap.depthMm ?? Math.min(ap.widthMm, 600));
+        const c = toSvg({ x: quad.reduce((t, q) => t + q.x, 0) / 4, y: quad.reduce((t, q) => t + q.y, 0) / 4 });
+        return (
+          <g key={ap.id} className={`plan-appliance${unknown ? ' is-unknown' : ''}${sev ? ` sev-${sev}` : ''}`} role="img" aria-label={label}>
+            <polygon points={pts(quad)} strokeWidth={fs * 0.1} strokeDasharray={`${fs * 0.4} ${fs * 0.25}`} />
+            <text x={c.x} y={c.y - fs * 0.35} fontSize={fs * 0.7} textAnchor="middle" pointerEvents="none">{ap.id}</text>
+            <text x={c.x} y={c.y + fs * 0.6} fontSize={fs * 0.6} textAnchor="middle" pointerEvents="none">
+              {sev ? `${SEVERITY_ICON[sev]} ` : ''}{ap.kind}{unknown ? ' ?' : ''}
+            </text>
+          </g>
+        );
+      })}
       {ordered.map((inst) => {
         const sku = skus.get(inst.skuCode);
         const wall = wallById.get(inst.wallId);

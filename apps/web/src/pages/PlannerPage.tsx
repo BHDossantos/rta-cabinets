@@ -1,5 +1,5 @@
 import {
-  type DesignDocument, type DesignInstance, type DisplayUnit, type Severity, type Sku, createCatalog, formatLength,
+  type Appliance, type DesignDocument, type DesignInstance, type Opening, type DisplayUnit, type Severity, type Sku, createCatalog, formatLength,
   validateDesign, wallsOf,
 } from '@rta/core';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -9,6 +9,7 @@ import { AddCabinetForm } from '../components/AddCabinetForm';
 import { nextInstanceId } from '../components/cabinetParts';
 import { Dialog } from '../components/Dialog';
 import { ElevationView } from '../components/ElevationView';
+import { FixturesPanel } from '../components/FixturesPanel';
 import { EstimatePanel } from '../components/EstimatePanel';
 import { InstanceTable } from '../components/InstanceTable';
 import { PlanView } from '../components/PlanView';
@@ -49,6 +50,9 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
   const [elevWall, setElevWall] = useState('w1');
   const [preview, setPreview] = useState<{ id: string; offsetMm: number } | null>(null);
   const [printedAt, setPrintedAt] = useState<string | null>(null);
+  const [access, setAccess] = useState<{ access: 'edit' | 'read_only'; endsAt: string | null } | null>(null);
+  const readOnlyRef = useRef(false);
+  readOnlyRef.current = access?.access === 'read_only';
   const [cartState, setCartState] = useState<{ busy: boolean; error: string | null }>({ busy: false, error: null });
   const recoveryKey = `rta.recovery.${account}`;
   const [recovery] = useState(() => (getProjectId() ? null : readJson<Recovery>(recoveryKey)));
@@ -95,6 +99,7 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
         projectRef.current = { id: p.id, revision: p.latestRevision };
         setProject(projectRef.current);
         setProjectName(p.name);
+        setAccess(p.access ?? null);
         setSaveStatus('saved');
         setStep('editor');
       })
@@ -156,6 +161,14 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
     if (!src || !sku) return d;
     return { ...d, instances: [...d.instances, { ...src, id: nextInstanceId(d), offsetMm: src.offsetMm + sku.dimensions.widthMm }] };
   });
+  const addOpening = (o: Opening) => commit((d) => ({ ...d, openings: [...d.openings, o] }));
+  const addAppliance = (a: Appliance) => commit((d) => ({ ...d, appliances: [...d.appliances, a] }));
+  const updateOpening = (id: string, patch: Partial<Opening>) =>
+    commit((d) => ({ ...d, openings: d.openings.map((o) => (o.id === id ? { ...o, ...patch } : o)) }));
+  const updateAppliance = (id: string, patch: Partial<Appliance>) =>
+    commit((d) => ({ ...d, appliances: d.appliances.map((a) => (a.id === id ? { ...a, ...patch } : a)) }));
+  const deleteFixture = (id: string) =>
+    commit((d) => ({ ...d, openings: d.openings.filter((o) => o.id !== id), appliances: d.appliances.filter((a) => a.id !== id) }));
   const select = (id: string | null) => {
     setSelectedId(id);
     const inst = id ? docRef.current?.instances.find((i) => i.id === id) : undefined;
@@ -179,7 +192,7 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
   const save = useCallback(async (): Promise<ProjectRef | null> => {
     if (inflight.current) await inflight.current;
     const d = docRef.current;
-    if (!d || conflictRef.current) return null;
+    if (!d || conflictRef.current || readOnlyRef.current) return projectRef.current && readOnlyRef.current ? projectRef.current : null;
     const json = JSON.stringify(d);
     const p = projectRef.current;
     if (p && json === savedJson.current) return p;
@@ -208,6 +221,10 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
           conflictRef.current = true;
           setSaveStatus('conflict');
           setConflictOpen(true);
+        } else if (e instanceof ApiError && e.details?.reason === 'access_expired') {
+          setAccess({ access: 'read_only', endsAt: (e.details.endsAt as string | null) ?? null });
+          setSaveStatus('error');
+          setSaveError({ message: e.message, notFound: false });
         } else {
           setSaveStatus(e instanceof ApiError && e.status === 0 ? 'offline' : 'error');
           setSaveError({ message: errorMessage(e), notFound: e instanceof ApiError && e.status === 404 });
@@ -225,7 +242,7 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
   useEffect(() => {
     if (!doc) return;
     writeJson(recoveryKey, { doc, name: nameRef.current, at: new Date().toISOString() } satisfies Recovery);
-    if (JSON.stringify(doc) === savedJson.current || conflictRef.current) return;
+    if (JSON.stringify(doc) === savedJson.current || conflictRef.current || readOnlyRef.current) return;
     setSaveStatus('unsaved');
     const t = setTimeout(() => void save(), AUTOSAVE_MS);
     return () => clearTimeout(t);
@@ -355,6 +372,15 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
             onRetry={() => void save()} onResolve={() => setConflictOpen(true)} onSaveAsNew={saveError?.notFound ? () => void saveAsNew() : undefined} />}
         </div>
 
+        {access?.access === 'read_only' && (
+          <Notice tone="warning" title="This project is now view-only">
+            The editing period for this account ended{access.endsAt ? ` on ${new Date(access.endsAt).toLocaleDateString()}` : ''}. You can still view,
+            download and print the plan. Your orders and support requests are not affected.
+          </Notice>
+        )}
+        {access?.access === 'edit' && access.endsAt && account !== 'guest' && (
+          <p className="small muted">You can edit this project until {new Date(access.endsAt).toLocaleDateString()}.</p>
+        )}
         {account === 'guest' && (
           <Notice tone="info" title="Guest design">Create an account to save and return to this project. Download your plan before leaving.</Notice>
         )}
@@ -472,6 +498,8 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
                   <InstanceTable doc={doc} skus={skus} items={items} unit={unit} selectedId={selectedId} issues={issues}
                     onSelect={select} onChange={updateInstance} onDelete={deleteInstance} onDuplicate={duplicateInstance} />
                 </section>
+                <FixturesPanel doc={doc} unit={unit} issues={issues} onAddOpening={addOpening} onAddAppliance={addAppliance}
+                  onChangeOpening={updateOpening} onChangeAppliance={updateAppliance} onDelete={deleteFixture} />
                 <div className="btn-row">
                   <button type="button" className="btn btn-secondary" onClick={() => setStep('room')}>Back to room</button>
                   <button type="button" className="btn btn-primary" onClick={() => setStep('estimate')}>Continue to estimate</button>

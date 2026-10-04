@@ -27,7 +27,7 @@ export function ElevationView({
 
   return (
     <svg className="elev-svg" viewBox={`${-pad} ${-pad} ${W + pad * 2} ${H + pad * 2}`} role="img"
-      aria-label={`Elevation of wall ${wall.id}, ${formatLength(wall.lengthMm, unit)} long, with ${items.length} cabinets`}>
+      aria-label={`Elevation of wall ${wall.id}, ${formatLength(wall.lengthMm, unit)} long, with ${items.length} cabinets, ${doc.openings.filter((o) => o.wallId === wallId).length} openings and ${doc.appliances.filter((a) => a.wallId === wallId).length} appliances`}>
       <rect x={0} y={0} width={W} height={H} className="elev-bg" />
       <line x1={0} y1={y(0)} x2={W} y2={y(0)} className="elev-floor" strokeWidth={fs * 0.2} />
       {ceiling !== null && (
@@ -39,6 +39,25 @@ export function ElevationView({
           </text>
         </>
       )}
+      {doc.openings.filter((o) => o.wallId === wallId).map((o) => (
+        <g key={o.id} className={`elev-opening elev-${o.kind}`}>
+          <rect x={o.offsetMm} y={y(o.sillMm + o.heightMm)} width={o.widthMm} height={o.heightMm} strokeWidth={fs * 0.08} />
+          <text x={o.offsetMm + o.widthMm / 2} y={y(o.sillMm + o.heightMm) + fs * 1.1} fontSize={fs * 0.7} textAnchor="middle">{o.id}</text>
+        </g>
+      ))}
+      {doc.appliances.filter((a) => a.wallId === wallId).map((a) => (
+        a.widthMm !== null && a.heightMm !== null ? (
+          <g key={a.id} className="elev-appliance">
+            <rect x={a.offsetMm} y={y(a.elevationMm + a.heightMm)} width={a.widthMm} height={a.heightMm} strokeWidth={fs * 0.1}
+              strokeDasharray={`${fs * 0.4} ${fs * 0.25}`} />
+            <text x={a.offsetMm + a.widthMm / 2} y={y(a.elevationMm + a.heightMm / 2)} fontSize={fs * 0.7} textAnchor="middle" dominantBaseline="middle">
+              {a.id} {a.kind}
+            </text>
+          </g>
+        ) : (
+          <text key={a.id} x={a.offsetMm} y={y(a.elevationMm) - fs * 0.5} fontSize={fs * 0.7} className="elev-label">{a.id} {a.kind}: size unknown</text>
+        )
+      ))}
       {items.map((i) => {
         const s = skus.get(i.skuCode);
         if (!s) return null;

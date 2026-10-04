@@ -46,6 +46,7 @@ export interface ProjectView {
   document: DesignDocument;
   contentHash: string;
   revisions: { number: number; createdAt: string; contentHash: string }[];
+  access?: { access: 'edit' | 'read_only'; endsAt: string | null };
 }
 
 export interface OrderView {
@@ -120,6 +121,11 @@ export const api = {
   checkout: (idempotencyKey: string, body: { cartId: string; acceptedTotalCents: number; acknowledgeIncomplete?: boolean; acknowledgeDivergence?: boolean }) =>
     request<{ orderId: string; totalCents: number; paymentState: string; paymentUrl: string; replayed: boolean }>(
       'POST', '/api/checkout-sessions', body, { 'Idempotency-Key': idempotencyKey }),
+
+  health: () => request<{ ok: boolean; mockPayments: boolean }>('GET', '/api/health'),
+  /** Development-only test payment; the server sets the amount. */
+  testPayment: (orderId: string, outcome: 'succeeded' | 'failed') =>
+    request<{ paymentState: string }>('POST', `/api/dev/payments/${encodeURIComponent(orderId)}`, { outcome }),
 
   getOrder: (id: string) => request<OrderView>('GET', `/api/orders/${encodeURIComponent(id)}`),
 

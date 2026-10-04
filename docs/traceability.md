@@ -23,11 +23,11 @@ Maps the handoff's acceptance criteria (AC) and QA scenarios to code and automat
 | AC06.1 Guest registers and resumes the identical design | Covered | `api.test.ts` › guest design |
 | AC06.2 Failed registration keeps the draft | Partial | The guest token persists until the claim succeeds |
 | AC06.3 Concurrent edits give a recoverable conflict | Covered | `operations.test.ts`, `api.test.ts` › project saves |
-| AC06.4 Expired access blocks edits at the API | Partial | `projectAccess()` exists but is not wired into the save route |
+| AC06.4 Expired access blocks edits at the API | Covered | `api.test.ts` › isolated app scenarios. Saves and new projects return 403 `access_expired`; viewing and orders continue. |
 | AC08.1 Unit round-trip within tolerance | Covered | `units.test.ts` |
 | AC08.2 No cabinet silently embedded after a room edit | Covered | `rules.test.ts` |
 | AC08.3 Undo restores placement, finish and quantities | Partial | Web planner history stack |
-| AC08.4 Open outline or missing appliance blocks validation | Covered | `rules.test.ts` |
+| AC08.4 Open outline or missing appliance blocks validation | Covered | `rules.test.ts`. The planner lets customers add doors, windows and appliances, with appliance sizes left as Unknown until measured. |
 | AC08.5 Mobile numeric placement without a mouse | Partial | Web planner numeric form. Device testing is outstanding. |
 | AC09.1 Collisions caught | Covered | `rules.test.ts` (same wall and corners) |
 | AC09.2 No retired or incompatible SKU without a blocked state | Covered | `rules.test.ts` |

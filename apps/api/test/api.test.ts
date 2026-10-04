@@ -234,3 +234,72 @@ describe('catalog import staging', () => {
 });
 
 void room;
+
+describe('isolated app scenarios', () => {
+  const start = new Date('2026-10-01T12:00:00Z');
+  async function boot(opts: Parameters<typeof createApp>[0] = {}) {
+    let t = start;
+    const a = createApp({ now: () => t, webhookSecret: 'test-secret', ...opts });
+    const srv = a.server();
+    await new Promise<void>((r) => srv.listen(0, r));
+    const url = `http://127.0.0.1:${(srv.address() as AddressInfo).port}`;
+    const req = async (method: string, path: string, body?: unknown, headers: Record<string, string> = {}) => {
+      const res = await fetch(url + path, { method, headers: { 'content-type': 'application/json', ...headers }, body: body === undefined ? undefined : JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as any };
+    };
+    return { req, advanceDays: (d: number) => { t = new Date(t.getTime() + d * 86_400_000); }, close: () => new Promise<void>((r) => srv.close(() => r())) };
+  }
+
+  it('homeowner editing becomes read-only after the window; viewing and orders continue (AC06.4)', async () => {
+    const s = await boot();
+    const H = as('u_home');
+    const p = (await s.req('POST', '/api/projects', { name: 'K', document: exampleA() }, H)).body;
+    const fresh = await s.req('GET', `/api/projects/${p.id}`, undefined, H);
+    expect(fresh.body.access).toEqual({ access: 'edit', endsAt: '2026-10-31T12:00:00.000Z' });
+    s.advanceDays(29);
+    expect((await s.req('POST', `/api/projects/${p.id}/revisions`, { baseRevision: 1, document: exampleA() }, H)).status).toBe(201);
+    s.advanceDays(2);
+    const blocked = await s.req('POST', `/api/projects/${p.id}/revisions`, { baseRevision: 2, document: exampleA() }, H);
+    expect(blocked.status).toBe(403);
+    expect(blocked.body.error.details).toMatchObject({ reason: 'access_expired' });
+    expect((await s.req('POST', '/api/projects', { name: 'New', document: exampleA() }, H)).status).toBe(403);
+    const view = await s.req('GET', `/api/projects/${p.id}`, undefined, H);
+    expect(view.status).toBe(200);
+    expect(view.body.access.access).toBe('read_only');
+    // Pros with paid entitlement keep editing.
+    expect((await s.req('POST', '/api/projects', { name: 'Pro', document: exampleA() }, as('u_pro'))).status).toBe(201);
+    await s.close();
+  });
+
+  it('claiming a guest draft keeps the earlier clock start', async () => {
+    const s = await boot();
+    const g = (await s.req('POST', '/api/projects', { name: 'G', document: exampleA() })).body;
+    s.advanceDays(20);
+    await s.req('POST', `/api/projects/${g.id}/claim`, {}, { ...as('u_home2'), 'x-guest-token': g.guestToken });
+    const view = await s.req('GET', `/api/projects/${g.id}`, undefined, as('u_home2'));
+    expect(view.body.access.endsAt).toBe('2026-10-31T12:00:00.000Z');
+    await s.close();
+  });
+
+  it('test payment marks only the owner’s order paid, at the server total', async () => {
+    const s = await boot();
+    const H = as('u_home');
+    const cart = (await s.req('POST', '/api/carts', {}, H)).body;
+    await s.req('PATCH', `/api/carts/${cart.id}`, { lines: [{ skuCode: 'SMP-WHT', quantity: 1 }] }, H);
+    const total = (await s.req('POST', '/api/checkout-sessions', { cartId: cart.id }, { ...H, 'idempotency-key': 'dev-pay-accept' })).body.error.details.totalCents;
+    const order = (await s.req('POST', '/api/checkout-sessions', { cartId: cart.id, acceptedTotalCents: total }, { ...H, 'idempotency-key': 'dev-pay-order' })).body;
+    expect((await s.req('POST', `/api/dev/payments/${order.orderId}`, { outcome: 'succeeded' }, as('u_home2'))).status).toBe(404);
+    expect((await s.req('POST', `/api/dev/payments/${order.orderId}`, { outcome: 'maybe' }, H)).status).toBe(422);
+    expect((await s.req('POST', `/api/dev/payments/${order.orderId}`, { outcome: 'succeeded' }, H)).body.paymentState).toBe('paid');
+    // A late failure event cannot undo a settled payment.
+    expect((await s.req('POST', `/api/dev/payments/${order.orderId}`, { outcome: 'failed' }, H)).body.paymentState).toBe('paid');
+    await s.close();
+  });
+
+  it('test payments are disabled when mockPayments is off', async () => {
+    const s = await boot({ mockPayments: false });
+    expect((await s.req('POST', '/api/dev/payments/ord_x', { outcome: 'succeeded' }, as('u_home'))).status).toBe(404);
+    expect((await s.req('GET', '/api/health')).body.mockPayments).toBe(false);
+    await s.close();
+  });
+});

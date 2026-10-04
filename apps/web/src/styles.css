@@ -242,6 +242,23 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; margin:
 .plan-item:focus-visible .plan-item-shape { stroke: var(--charcoal); stroke-dasharray: none; fill: #FFE7D6; }
 .plan-item-label { fill: var(--charcoal); font-weight: 700; font-family: var(--font); }
 .plan-item-sub { fill: var(--charcoal); font-family: var(--font); }
+.plan-gap { stroke: #FAFAFA; }
+.plan-door-leaf, .plan-door-swing { stroke: var(--charcoal); fill: none; }
+.plan-window { stroke: var(--charcoal); fill: var(--charcoal); }
+.plan-obstruction { fill: #CFCFCF; stroke: var(--charcoal); }
+.plan-appliance polygon, .plan-appliance circle { fill: #FFFFFF; stroke: var(--muted); }
+.plan-appliance text { fill: var(--charcoal); font-family: var(--font); }
+.plan-appliance.sev-blocker polygon { stroke: var(--charcoal); stroke-dasharray: none; }
+.elev-opening rect { fill: #FFFFFF; stroke: var(--charcoal); }
+.elev-opening.elev-column rect, .elev-opening.elev-obstruction rect { fill: #CFCFCF; }
+.elev-opening text, .elev-appliance text { fill: var(--charcoal); font-family: var(--font); }
+.elev-appliance rect { fill: #FFFFFF; stroke: var(--muted); }
+.fixture-form { border-bottom: 1px solid var(--border); padding-bottom: var(--space-3); margin-bottom: var(--space-3); }
+.fixture-dims { grid-column: 1 / -1; }
+.fixture-dims-inline { display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); min-width: 240px; }
+.fixture-dims-inline .field { margin: 0; }
+.fixture-table .field { margin: 0; min-width: 100px; }
+.fixture-table select { min-width: 72px; }
 .elev-svg { display: block; width: 100%; height: auto; max-height: 320px; }
 .elev-bg { fill: #FAFAFA; }
 .elev-floor { stroke: var(--charcoal); }

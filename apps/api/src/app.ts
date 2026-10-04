@@ -3,7 +3,7 @@ import { createServer, type Server } from 'node:http';
 import {
   type DesignDocument, type Entitlement, type Lead, type Project, type Quote, type ShipmentState,
   DomainError, applyCarrierStatus, assert, claimLead, compareCartToDesign, entitlementFor, expandDesign, fulfillmentStatus,
-  getRevision, groupLines, leadViewFor, materialChanges, priceQuote, productionEligibility, recordApproval, releaseGate,
+  getRevision, groupLines, leadViewFor, materialChanges, priceQuote, projectAccess, productionEligibility, recordApproval, releaseGate,
   revalidateQuote, saveRevision, searchDirectory, stableStringify, stageImport, validateDesign, validateShipment, visibleTo,
   DESIGN_SCHEMA_VERSION, dollars,
 } from '@rta/core';
@@ -16,6 +16,10 @@ export interface AppOptions {
   /** Shared secret for the mock payment provider's signed webhooks. */
   webhookSecret?: string;
   reservationTtlMs?: number;
+  /** Enables POST /api/dev/payments/:orderId. Defaults to on unless NODE_ENV=production. */
+  mockPayments?: boolean;
+  /** Homeowner editing window in days (D02 proposed default: 30). */
+  accessDays?: number;
 }
 
 interface Principal {
@@ -38,6 +42,8 @@ export function createApp(opts: AppOptions = {}) {
   const now = opts.now ?? (() => new Date());
   const secret = opts.webhookSecret ?? process.env.MOCKPAY_WEBHOOK_SECRET ?? 'dev-only-secret';
   const reservationTtlMs = opts.reservationTtlMs ?? 30 * 60_000;
+  const mockPayments = opts.mockPayments ?? process.env.NODE_ENV !== 'production';
+  const accessDays = opts.accessDays ?? 30;
   const router = new Router();
 
   // --- identity (development stub; replace with the selected identity provider, D24) ---
@@ -116,8 +122,58 @@ export function createApp(opts: AppOptions = {}) {
 
   const cartView = (cart: Cart) => ({ ...cart, quote: quoteForLines(cart.lines, entitlementOf(store.users.get(cart.ownerId))) });
 
+  /**
+   * Homeowner editing window (D02 proposed default, configurable): the clock starts at
+   * the account's first saved project; afterwards projects are read-only with export.
+   * Paid trade entitlement keeps editing open. Orders and support access are unaffected.
+   */
+  const windowKey = (project: Pick<Project, 'ownerType' | 'ownerId' | 'id'>): string | null =>
+    project.ownerType === 'user' ? `user:${project.ownerId}` : project.ownerType === 'guest' ? `guest:${project.id}` : null;
+  const accessFor = (key: string | null, user?: User) => {
+    const startedAt = key ? store.accessWindows.get(key) ?? null : null;
+    return projectAccess({ startedAt, days: accessDays, extensionDays: 0 }, now(), entitlementOf(user).tradePricing);
+  };
+  const requireEditable = (key: string | null, user?: User) => {
+    const access = accessFor(key, user);
+    if (access.access !== 'edit') {
+      throw new DomainError('forbidden', 'The editing period for this account has ended. Your projects stay available to view and download, and orders and support are unaffected.', { reason: 'access_expired', endsAt: access.endsAt });
+    }
+  };
+
+  type PaymentEvent = { id: string; type: 'payment.succeeded' | 'payment.failed'; orderId: string; amountCents: number };
+
+  /** Shared by the signed webhook and the dev test-payment route. Duplicates are no-ops. */
+  const processPaymentEvent = (evt: PaymentEvent) => {
+    if (!store.webhooks.record('mockpay', evt.id, evt.type, now())) return { received: true, duplicate: true };
+    const order = store.orders.get(evt.orderId);
+    if (!order) return { received: true, ignored: 'unknown_order' };
+    if (evt.type === 'payment.failed') {
+      // A late or out-of-order failure never overrides a settled or reconciling payment.
+      if (order.paymentState !== 'pending') return { received: true, ignored: `payment_${order.paymentState}` };
+      order.paymentState = 'failed';
+      order.reservationIds.forEach((id) => store.inventory.release(id));
+      order.events.push({ type: 'payment.failed', at: now().toISOString() });
+    } else if (evt.type === 'payment.succeeded') {
+      if (order.paymentState === 'paid') return { received: true, duplicate: true };
+      if (evt.amountCents !== order.totalCents) {
+        order.paymentState = 'reconciliation';
+        order.events.push({ type: 'payment.amount_mismatch', at: now().toISOString(), detail: { expected: order.totalCents, received: evt.amountCents } });
+        return { received: true, reconciliation: true };
+      }
+      try {
+        order.reservationIds.forEach((id) => store.inventory.commit(id, now()));
+        order.paymentState = 'paid';
+        order.events.push({ type: 'order.paid', at: now().toISOString() });
+      } catch (e) {
+        order.paymentState = 'reconciliation';
+        order.events.push({ type: 'payment.after_reservation_expiry', at: now().toISOString(), detail: { error: (e as Error).message } });
+      }
+    }
+    return { received: true };
+  };
+
   // --- routes ---
-  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, time: now().toISOString() }));
+  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, mockPayments, time: now().toISOString() }));
 
   router.on('GET', '/api/catalog/skus', (ctx) => {
     const ent = entitlementOf(principal(ctx).user);
@@ -152,8 +208,11 @@ export function createApp(opts: AppOptions = {}) {
       guestToken = `gst_${createHash('sha256').update(`${id}:${Math.random()}:${now().getTime()}`).digest('hex').slice(0, 32)}`;
       store.guestTokens.set(guestToken, id);
     }
+    const key = windowKey(project);
+    requireEditable(key, p.user);
     const rev = saveRevision(project, 0, document, contentHash(document), p.user?.id ?? 'guest', now());
     store.projects.set(id, project);
+    if (key && !store.accessWindows.has(key)) store.accessWindows.set(key, now().toISOString());
     ctx.res.statusCode = 201;
     return { id, name: project.name, ownerType: project.ownerType, latestRevision: rev.number, contentHash: rev.contentHash, guestToken };
   });
@@ -164,6 +223,7 @@ export function createApp(opts: AppOptions = {}) {
     return {
       id: project.id, name: project.name, ownerType: project.ownerType, latestRevision: latest.number,
       approvedRevision: project.approvedRevision, document: latest.document, contentHash: latest.contentHash,
+      access: accessFor(windowKey(project), principal(ctx).user),
       revisions: project.revisions.map((r) => ({ number: r.number, createdAt: r.createdAt, contentHash: r.contentHash })),
     };
   });
@@ -173,6 +233,7 @@ export function createApp(opts: AppOptions = {}) {
     const body = ctx.body as { baseRevision?: number; document?: unknown };
     assert(Number.isInteger(body.baseRevision), 'validation', 'baseRevision is required');
     const document = parseDocument(body.document);
+    requireEditable(windowKey(project), principal(ctx).user);
     const rev = saveRevision(project, body.baseRevision!, document, contentHash(document), principal(ctx).user?.id ?? 'guest', now());
     ctx.res.statusCode = 201;
     return { revision: rev.number, contentHash: rev.contentHash, savedAt: rev.createdAt };
@@ -186,6 +247,12 @@ export function createApp(opts: AppOptions = {}) {
     if (!project || project.ownerType !== 'guest' || !p.guestToken || store.guestTokens.get(p.guestToken) !== project.id) {
       throw new DomainError('not_found', 'Project not found');
     }
+    // Claiming never restarts the clock: the account keeps the earlier of the two starts.
+    const guestStart = store.accessWindows.get(`guest:${project.id}`);
+    const userStart = store.accessWindows.get(`user:${user.id}`);
+    const start = [guestStart, userStart].filter((x): x is string => !!x).sort()[0];
+    if (start) store.accessWindows.set(`user:${user.id}`, start);
+    store.accessWindows.delete(`guest:${project.id}`);
     project.ownerType = 'user';
     project.ownerId = user.id;
     store.guestTokens.delete(p.guestToken);
@@ -324,30 +391,21 @@ export function createApp(opts: AppOptions = {}) {
     if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
       throw new DomainError('unauthorized', 'Invalid signature');
     }
-    const evt = ctx.body as { id: string; type: 'payment.succeeded' | 'payment.failed'; orderId: string; amountCents: number };
-    if (!store.webhooks.record('mockpay', evt.id, evt.type, now())) return { received: true, duplicate: true };
-    const order = store.orders.get(evt.orderId);
-    if (!order) return { received: true, ignored: 'unknown_order' };
-    if (evt.type === 'payment.failed') {
-      order.paymentState = 'failed';
-      order.reservationIds.forEach((id) => store.inventory.release(id));
-    } else if (evt.type === 'payment.succeeded') {
-      if (order.paymentState === 'paid') return { received: true, duplicate: true };
-      if (evt.amountCents !== order.totalCents) {
-        order.paymentState = 'reconciliation';
-        order.events.push({ type: 'payment.amount_mismatch', at: now().toISOString(), detail: { expected: order.totalCents, received: evt.amountCents } });
-        return { received: true, reconciliation: true };
-      }
-      try {
-        order.reservationIds.forEach((id) => store.inventory.commit(id, now()));
-        order.paymentState = 'paid';
-        order.events.push({ type: 'order.paid', at: now().toISOString() });
-      } catch (e) {
-        order.paymentState = 'reconciliation';
-        order.events.push({ type: 'payment.after_reservation_expiry', at: now().toISOString(), detail: { error: (e as Error).message } });
-      }
-    }
-    return { received: true };
+    return processPaymentEvent(ctx.body as PaymentEvent);
+  });
+
+  /**
+   * Development-only test payment (no real provider yet, D24). The server builds the
+   * event itself and runs it through the same processing as a signed webhook, so the
+   * browser can never mark an order paid with an amount of its choosing.
+   */
+  router.on('POST', '/api/dev/payments/:orderId', (ctx) => {
+    if (!mockPayments) throw new DomainError('not_found', 'Route not found');
+    const order = loadOrder(ctx, ctx.params.orderId!);
+    const outcome = (ctx.body as { outcome?: string }).outcome;
+    assert(outcome === 'succeeded' || outcome === 'failed', 'validation', 'outcome must be "succeeded" or "failed"');
+    const result = processPaymentEvent({ id: store.id('devevt'), type: `payment.${outcome}`, orderId: order.id, amountCents: order.totalCents });
+    return { ...result, paymentState: order.paymentState };
   });
 
   router.on('GET', '/api/orders/:id', (ctx) => {

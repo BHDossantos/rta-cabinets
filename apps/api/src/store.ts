@@ -85,6 +85,8 @@ export class Store {
   pros: ProProfile[] = [];
   leads = new Map<string, Lead>();
   referrals = new Map<string, FinancingReferral>();
+  /** Homeowner editing-window start per account ('user:<id>' or 'guest:<projectId>'), D02. */
+  accessWindows = new Map<string, string>();
   inventory = new InventoryLedger();
   idempotency = new IdempotencyStore<unknown>();
   webhooks = new WebhookReceiptLog();

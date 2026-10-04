@@ -5,7 +5,7 @@ Status of the business and factory decisions from handoff sections 30–31. **OP
 | ID | Decision | Status | How the code handles it today |
 |----|----------|--------|--------------------------|
 | D01 | Free homeowner account vs paid 12-month membership | OPEN | Basic account and paid entitlements are separate (`membership.ts`). No fee is hardcoded. |
-| D02 | What starts the 30-day window, and what happens after it | OPEN | `projectAccess()`: the window is data. Proposed default: the clock starts at the first saved project, then access becomes read-only with export. |
+| D02 | What starts the 30-day window, and what happens after it | OPEN | Enforced by the API with the proposed default: the clock starts at the account's first saved project (claiming a guest draft keeps the earlier start), then editing stops while viewing, export, orders and support continue. Length is the `accessDays` option. |
 | D03 | Annual only, or monthly and annual Pro tiers | OPEN | `PlanConfig.interval` supports both. The fixture has one annual pilot plan with `priceCents: null`. |
 | D04 | Plan prices, limits, discounts and renewal rules | OPEN | Held centrally as configuration (`FIXTURE_PLANS`, `PricingPolicy`). The 10% trade discount is a synthetic test fixture only. |
 | D05 | Which release is the contracted first launch | OPEN | This repo is the R0/R1 foundation. See the README roadmap. |
@@ -23,7 +23,7 @@ Status of the business and factory decisions from handoff sections 30–31. **OP
 | D17–D21 | Custom scope, Stage A/B contents, material and room matrix, measurement owner, countertops | OPEN | Countertops are `quote_required`. Stage A/B is a per-SKU `fulfillmentStage`. |
 | D22 | ERP, WMS, CAM and CNC systems | OPEN | No adapters yet. The outbox and webhook tables are in the schema. |
 | D23 | Inventory and price system of record | OPEN | `InventoryLedger` is in-process. The DB design uses `FOR UPDATE` reservations. |
-| D24 | Payment, tax, shipping and subscription providers | OPEN | A mock provider uses an HMAC-signed webhook. Tax uses fixture rates. Freight is a synthetic flat $100 at checkout and `pending_quote` elsewhere. |
+| D24 | Payment, tax, shipping and subscription providers | OPEN | A mock provider uses an HMAC-signed webhook. A development-only test-payment button (off when `NODE_ENV=production`) runs the same processing. Tax uses fixture rates. Freight is a synthetic flat $100 at checkout and `pending_quote` elsewhere. |
 | D25–D26 | Financing partner and programs | OPEN | Lead-referral mode only, with consent evidence. Sensitive fields are rejected. |
 | D27 | Framing engineering authority | OPEN | Not implemented (R3). |
 | D28 | Marketplace seller model | OPEN | Seller state machine only (R4). |

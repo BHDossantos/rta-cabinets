@@ -18,6 +18,8 @@ npm run dev:web     # http://localhost:5173 (proxies /api to :8787)
 
 Demo users (a development stub, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
 
+No payment provider is connected yet. In development, the order page has **Simulate successful / declined payment** buttons. They send the server a simulated provider notification for the order's server-side total, and they are disabled when `NODE_ENV=production`.
+
 ## Layout
 
 | Path | What |
