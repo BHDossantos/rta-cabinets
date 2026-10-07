@@ -303,3 +303,84 @@ describe('isolated app scenarios', () => {
     await s.close();
   });
 });
+
+describe('customer dashboard and design service (spec 4, 11)', () => {
+  it('lists only the caller’s projects and orders', async () => {
+    const mine = await call('GET', '/api/me/projects', undefined, as('u_home'));
+    expect(mine.status).toBe(200);
+    expect(mine.body.projects.length).toBeGreaterThan(0);
+    const other = await call('GET', '/api/me/projects', undefined, as('u_home2'));
+    const mineIds = new Set(mine.body.projects.map((p: any) => p.id));
+    expect(other.body.projects.some((p: any) => mineIds.has(p.id))).toBe(false);
+    const orders = await call('GET', '/api/me/orders', undefined, as('u_home'));
+    expect(orders.body.orders[0]).toMatchObject({ paymentState: expect.any(String), fulfillment: expect.any(String) });
+    expect((await call('GET', '/api/me/orders')).status).toBe(401);
+  });
+
+  it('runs a design request through intake, clarification and review', async () => {
+    const H = as('u_home');
+    const D = as('u_designer');
+    const incomplete = await call('POST', '/api/design-requests', { roomType: 'kitchen' }, H);
+    expect(incomplete.status).toBe(422);
+    expect(incomplete.body.error.details.missing).toEqual(expect.arrayContaining(['zip', 'timeline', 'budgetRange', 'services', 'contactPreference']));
+    const req = (await call('POST', '/api/design-requests', {
+      roomType: 'kitchen', zip: '33101', timeline: '1-3 months', budgetRange: '$10k-$20k', services: ['layout'], contactPreference: 'email', notes: 'Keep the sink',
+    }, H)).body;
+    expect(req).toMatchObject({ state: 'submitted' });
+    expect(req).not.toHaveProperty('ownerId');
+    // Customers cannot move their own request forward; other customers cannot see it.
+    expect((await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'assigned' }, H)).status).toBe(403);
+    expect((await call('GET', `/api/design-requests/${req.id}`, undefined, as('u_home2'))).status).toBe(404);
+    // Designer queue, assignment, clarification; customer reply returns it to design.
+    expect((await call('GET', '/api/design-requests?state=submitted', undefined, D)).body.requests.map((r: any) => r.id)).toContain(req.id);
+    expect((await call('GET', '/api/design-requests', undefined, H)).status).toBe(403);
+    await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'assigned' }, D);
+    expect((await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'needs_information' }, D)).status).toBe(422);
+    await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'needs_information', reason: 'Please send the window height' }, D);
+    const replied = (await call('POST', `/api/design-requests/${req.id}/messages`, { text: '36 inches' }, H)).body;
+    expect(replied.state).toBe('in_design');
+    expect(replied.messages.map((m: any) => m.from)).toEqual(['designer', 'customer']);
+    // Invalid jump is rejected by the state machine.
+    expect((await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'converted' }, D)).status).toBe(409);
+    const review = (await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'customer_review' }, D)).body;
+    expect(review.history.map((h: any) => h.to)).toEqual(['submitted', 'assigned', 'needs_information', 'in_design', 'customer_review']);
+    // The customer may withdraw.
+    expect((await call('POST', `/api/design-requests/${req.id}/transition`, { to: 'withdrawn' }, H)).body.state).toBe('withdrawn');
+  });
+});
+
+describe('collections and guest shopping (competitive features)', () => {
+  it('returns each collection with a server-priced 10x10, stock and lead time', async () => {
+    const retail = (await call('GET', '/api/collections')).body;
+    const white = retail.collections.find((c: any) => c.id === 'white-shaker');
+    expect(white.tenByTen).toMatchObject({ available: true, tradeCents: null });
+    expect(white.tenByTen.retailCents).toBeGreaterThan(0);
+    expect(white.bodiesInStock).toBe(true);
+    expect(white.sample).toMatchObject({ code: 'SMP-WHT' });
+    const alu = retail.collections.find((c: any) => c.id === 'brushed-aluminum');
+    expect(alu.tenByTen).toMatchObject({ available: false, retailCents: null });
+    // Stock for the outdoor style reflects its own aluminum bodies, not the plywood 10x10.
+    app.store.inventory.setPosition({ skuCode: 'B36-EXT', warehouseId: 'wh-main', onHand: 0, quarantined: 0, safetyStock: 0, incomingConfirmed: 0 });
+    const after = (await call('GET', '/api/collections')).body.collections;
+    expect(after.find((c: any) => c.id === 'brushed-aluminum').bodiesInStock).toBe(false);
+    expect(after.find((c: any) => c.id === 'white-shaker').bodiesInStock).toBe(true);
+    expect(retail.tenByTenDefinition.excludes).toContain('countertops');
+    // Pros additionally see their trade price, computed by the same engine.
+    const pro = (await call('GET', '/api/collections', undefined, as('u_pro'))).body.collections.find((c: any) => c.id === 'white-shaker');
+    expect(pro.tenByTen.tradeCents).toBe(Math.round(pro.tenByTen.retailCents * 0.9));
+  });
+
+  it('lets a guest start a cart, then keeps the same token when they start a design', async () => {
+    const cart = (await call('POST', '/api/carts', {})).body;
+    expect(cart.guestToken).toMatch(/^gst_[0-9a-f]{32}$/);
+    const G = { 'x-guest-token': cart.guestToken };
+    expect((await call('PATCH', `/api/carts/${cart.id}`, { lines: [{ skuCode: 'SMP-OAK', quantity: 1 }] }, G)).body.lines).toHaveLength(1);
+    const project = (await call('POST', '/api/projects', { name: 'Guest', document: exampleA() }, G)).body;
+    expect(project.guestToken).toBe(cart.guestToken);
+    expect((await call('GET', `/api/carts/${cart.id}`, undefined, G)).status).toBe(200);
+    expect((await call('GET', `/api/projects/${project.id}`, undefined, G)).status).toBe(200);
+    // A cart-only token never grants access to someone's project.
+    const other = (await call('POST', '/api/carts', {})).body;
+    expect((await call('GET', `/api/projects/${project.id}`, undefined, { 'x-guest-token': other.guestToken })).status).toBe(404);
+  });
+});

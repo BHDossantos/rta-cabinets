@@ -36,7 +36,10 @@ Maps the handoff's acceptance criteria (AC) and QA scenarios to code and automat
 | AC09.5 2D, BOM and cart agree | Partial | `commerce.test.ts` › design to cart (instance links) |
 | AC11.1 Approved revision immutable | Covered | `operations.test.ts` › Example E |
 | AC11.2 Cart references the approved revision; detects superseded ones | Covered | Checkout compares the content hash and flags material changes |
+| AC11.3 Uploaded photos private to participants | Not started | File uploads need private storage |
 | AC11.4 Customer approval alone cannot release | Covered | `releaseGate()` and the API e2e test |
+| AC11.5 Free Design explains what is included | Partial | `/design-service` lists each term and marks undecided ones (D07) as "to be confirmed" |
+| Design request workflow (spec 11 steps 1–2, states) | Covered | `api.test.ts` › design service: intake validation, designer queue, clarification, customer reply, state machine, withdrawal |
 | AC12.1 Identical carts get identical totals | Covered | `commerce.test.ts` |
 | AC12.2 Client prices ignored | Covered | `api.test.ts` › server-side pricing |
 | AC12.3 Expired membership forces the approved reprice policy | Covered | `commerce.test.ts` › Example C |

@@ -4,10 +4,10 @@
  * db/schema.sql. Every repository method here maps to a transaction there.
  */
 import {
-  type Catalog, type CartLine, type DesignExpansion, type Lead, type PlanConfig, type ProProfile, type Project,
+  type Catalog, type CartLine, type Collection, FIXTURE_COLLECTIONS, type DesignExpansion, type Lead, type PlanConfig, type ProProfile, type Project,
   type Quote, type Subscription, FIXTURE_PLANS, FIXTURE_POLICY, FIXTURE_PRICE_BOOK, IdempotencyStore, InventoryLedger,
   type PriceBook, type PricingPolicy, WebhookReceiptLog, fixtureCatalog, type CartComparison, type Shipment,
-  type PaymentState, type ManufacturingState, type Reservation, type StockPosition,
+  type PaymentState, type ManufacturingState, type Reservation, type StockPosition, type DesignRequestState, type TransitionRecord,
 } from '@rta/core';
 
 export interface User {
@@ -60,6 +60,28 @@ export interface Order {
   createdAt: string;
 }
 
+export interface DesignRequest {
+  id: string;
+  ownerId: string;
+  projectId?: string;
+  revisionNumber?: number;
+  state: DesignRequestState;
+  roomType: string;
+  zip: string;
+  timeline: string;
+  budgetRange: string;
+  services: string[];
+  appliances: string;
+  preferredMaterials: string;
+  contactPreference: 'email' | 'phone' | 'either';
+  phone?: string;
+  notes: string;
+  assignedTo?: string;
+  history: TransitionRecord<DesignRequestState>[];
+  messages: { from: 'customer' | 'designer'; authorId: string; text: string; at: string }[];
+  createdAt: string;
+}
+
 export interface FinancingReferral {
   id: string;
   projectId?: string;
@@ -76,6 +98,7 @@ export class Store {
   priceBook: PriceBook = FIXTURE_PRICE_BOOK;
   policy: PricingPolicy = FIXTURE_POLICY;
   plans: PlanConfig[] = FIXTURE_PLANS;
+  collections: Collection[] = FIXTURE_COLLECTIONS;
   users = new Map<string, User>();
   guestTokens = new Map<string, string>(); // token -> projectId
   projects = new Map<string, Project>();
@@ -85,6 +108,7 @@ export class Store {
   pros: ProProfile[] = [];
   leads = new Map<string, Lead>();
   referrals = new Map<string, FinancingReferral>();
+  designRequests = new Map<string, DesignRequest>();
   /** Homeowner editing-window start per account ('user:<id>' or 'guest:<projectId>'), D02. */
   accessWindows = new Map<string, string>();
   inventory = new InventoryLedger();
@@ -115,6 +139,7 @@ export class Store {
     add('subscription', this.subscriptions);
     add('lead', this.leads);
     add('referral', this.referrals);
+    add('design_request', this.designRequests);
     add('guest_token', this.guestTokens);
     add('access_window', this.accessWindows);
     add('pro', this.pros.map((p) => [p.orgId, p] as [string, ProProfile]));
@@ -139,6 +164,7 @@ export class Store {
     s.subscriptions = new Map(of<Subscription>('subscription').map((r) => [r.id, r.data]));
     s.leads = new Map(of<Lead>('lead').map((r) => [r.id, r.data]));
     s.referrals = new Map(of<FinancingReferral>('referral').map((r) => [r.id, r.data]));
+    s.designRequests = new Map(of<DesignRequest>('design_request').map((r) => [r.id, r.data]));
     s.guestTokens = new Map(of<string>('guest_token').map((r) => [r.id, r.data]));
     s.accessWindows = new Map(of<string>('access_window').map((r) => [r.id, r.data]));
     s.pros = of<ProProfile>('pro').map((r) => r.data);
@@ -156,7 +182,7 @@ export class Store {
 
 export type EntityKind =
   | 'meta' | 'user' | 'project' | 'cart' | 'order' | 'subscription' | 'lead' | 'referral' | 'guest_token' | 'access_window'
-  | 'pro' | 'stock_position' | 'reservation' | 'idempotency' | 'webhook' | 'audit';
+  | 'pro' | 'stock_position' | 'reservation' | 'idempotency' | 'webhook' | 'audit' | 'design_request';
 
 export interface EntityRow {
   kind: EntityKind;
@@ -170,6 +196,7 @@ export function seedStore(store: Store, now = new Date()): Store {
   store.users.set('u_home2', { id: 'u_home2', name: 'Other Homeowner', email: 'other@example.test', orgIds: [], roles: ['homeowner'] });
   store.users.set('u_pro', { id: 'u_pro', name: 'Demo Pro Owner', email: 'pro@example.test', orgIds: ['org_pro'], roles: ['pro_owner'] });
   store.users.set('u_factory', { id: 'u_factory', name: 'Factory Planner', email: 'factory@example.test', orgIds: ['org_factory'], roles: ['factory_planner'] });
+  store.users.set('u_designer', { id: 'u_designer', name: 'Staff Designer', email: 'designer@example.test', orgIds: ['org_factory'], roles: ['internal_designer'] });
   store.users.set('u_admin', { id: 'u_admin', name: 'Admin', email: 'admin@example.test', orgIds: ['org_factory'], roles: ['admin'] });
   const yearAhead = new Date(now.getTime() + 365 * 86_400_000).toISOString();
   store.subscriptions.set('org_pro', { id: 'sub_demo', orgId: 'org_pro', planId: 'pro-annual', status: 'active', paidThrough: yearAhead, cancelAtPeriodEnd: false, appliedEventIds: [] });
@@ -190,7 +217,13 @@ export function seedStore(store: Store, now = new Date()): Store {
  */
 export async function openStore(persistence: { load(): Promise<EntityRow[]>; apply(u: EntityRow[], d: { kind: EntityKind; id: string }[]): Promise<void> }, now = new Date()): Promise<{ store: Store; seeded: boolean }> {
   const rows = await persistence.load();
-  if (rows.length > 0) return { store: Store.fromRows(rows), seeded: false };
+  if (rows.length > 0) {
+    const store = Store.fromRows(rows);
+    // Development stub: demo accounts added in later versions appear in older databases too.
+    const demo = seedStore(new Store(), now);
+    for (const [id, u] of demo.users) if (!store.users.has(id)) store.users.set(id, u);
+    return { store, seeded: false };
+  }
   const store = seedStore(new Store(), now);
   await persistence.apply(store.rows(), []);
   return { store, seeded: true };

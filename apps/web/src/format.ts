@@ -80,3 +80,17 @@ export function newId(prefix: string): string {
   const rnd = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID().slice(0, 8) : Math.random().toString(36).slice(2, 10);
   return `${prefix}_${rnd}`;
 }
+
+export const DESIGN_REQUEST_LABEL: Record<string, string> = {
+  draft: 'Draft',
+  submitted: 'Received, waiting for a designer',
+  assigned: 'Assigned to a designer',
+  needs_information: 'Designer needs more information',
+  in_design: 'Being designed',
+  customer_review: 'Ready for your review',
+  approved: 'Approved',
+  converted: 'Converted to an order',
+  rejected: 'Declined',
+  withdrawn: 'Withdrawn',
+  superseded: 'Replaced by a newer request',
+};

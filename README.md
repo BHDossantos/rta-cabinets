@@ -26,9 +26,11 @@ DATABASE_URL=postgres://user:pass@localhost:5432/rta npm run dev:api
 
 Run one API instance per database; a second instance is refused at startup. Database tests run when `TEST_DATABASE_URL` points at a server where the test user can create databases (CI provides one).
 
-Demo users (a development stub, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
+Demo users (a development stub, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_designer` (staff designer queue), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
 
 No payment provider is connected yet. In development, the order page has **Simulate successful / declined payment** buttons. They send the server a simulated provider notification for the order's server-side total, and they are disabled when `NODE_ENV=production`.
+
+Features follow what leading cabinet manufacturer and RTA sites do well; see [`docs/competitive-research.md`](docs/competitive-research.md) for the 20 sites reviewed and what was adopted.
 
 ## Layout
 
@@ -36,7 +38,7 @@ No payment provider is connected yet. In development, the order page has **Simul
 |---|---|
 | `packages/core` | Domain engine: units, geometry, layout rules, surfaces, pricing, design-to-cart, inventory, fulfillment, leads, memberships, revisions and release gates |
 | `apps/api` | HTTP API implementing the section 24 contract (projects, revisions, validation, quotes, carts, idempotent checkout, signed webhooks, release, shipments, directory, leads, financing referrals, catalog import staging) |
-| `apps/web` | React storefront, accessible 2D planner (numeric and drag placement), estimate, cart/checkout, installer directory, financing referral |
+| `apps/web` | React storefront: door-style collections with 10x10 prices and sample doors, quick order by SKU, accessible 2D planner, free design service with designer queue, account dashboard, measuring guide, cart/checkout, installer directory, financing referral |
 | `db/migrations/` | Migrations applied by the API on startup (pilot persistence) |
 | `db/schema.sql` | Normalized PostgreSQL target schema with the integrity constraints from section 23 |
 | `docs/` | Architecture, decision register, traceability matrix, catalog CSV template, original handoff |

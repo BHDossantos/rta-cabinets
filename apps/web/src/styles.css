@@ -293,3 +293,29 @@ input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; margin:
   .print-plan svg { max-height: 12cm; }
   .table th, .table td { border-bottom: 1px solid #999; }
 }
+
+/* --- account, design service, measuring guide --- */
+.steps-inline { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-2); grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.steps-inline li { background: var(--surface); border-radius: var(--radius); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+.steps-inline span { font-size: 14px; color: var(--muted); }
+.request-list { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3); }
+.request-card .card-head { display: flex; flex-wrap: wrap; gap: var(--space-2); justify-content: space-between; align-items: baseline; }
+.messages { list-style: none; padding: 0; display: grid; gap: var(--space-2); }
+.message { border-left: 4px solid var(--border); padding: var(--space-1) var(--space-3); background: var(--surface); }
+.message.from-designer { border-left-color: var(--orange-dark); }
+.message p { margin: var(--space-1) 0 0; white-space: pre-wrap; }
+.measure-steps { padding-left: 0; list-style: none; display: grid; gap: var(--space-3); counter-reset: step; }
+.measure-steps > li { counter-increment: step; }
+.measure-steps > li h2::before { content: counter(step) ". "; }
+.worksheet td { min-width: 90px; height: 36px; }
+textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px solid var(--charcoal); border-radius: var(--radius); }
+
+/* --- collections --- */
+.collection-grid { list-style: none; padding: 0; margin: 0 0 var(--space-4); display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+.collection-card { display: flex; flex-direction: column; gap: var(--space-2); }
+.collection-card h2 { margin: 0; }
+.swatch { height: 96px; border-radius: var(--radius); border: 1px solid var(--border); }
+.ten-by-ten { display: flex; flex-direction: column; gap: 2px; padding: var(--space-2) var(--space-3); background: var(--surface); border-radius: var(--radius); }
+.ten-by-ten .price { font-size: 24px; }
+.badges { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: var(--space-1); }
+.badges .badge { white-space: normal; border-radius: var(--radius); }

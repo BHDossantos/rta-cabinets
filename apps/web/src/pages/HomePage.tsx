@@ -15,6 +15,32 @@ export function HomePage() {
         </div>
       </section>
 
+      <section className="container section" aria-labelledby="start-h">
+        <h2 id="start-h">Three ways to start</h2>
+        <div className="grid-3">
+          <div className="card">
+            <h3>Design it yourself</h3>
+            <p>Use the planner to place cabinets on your walls and see an itemized price as you go.</p>
+            <a href="#/design" className="btn btn-secondary">Open the planner</a>
+          </div>
+          <div className="card">
+            <h3>Let a designer do it, free</h3>
+            <p>Send your measurements and a designer lays out your kitchen with our cabinets and sends a price to review.</p>
+            <a href="#/design-service" className="btn btn-secondary">Request a free design</a>
+          </div>
+          <div className="card">
+            <h3>Order by SKU</h3>
+            <p>Already have a cabinet list? Paste the codes and quantities and check out.</p>
+            <a href="#/quick-order" className="btn btn-secondary">Quick order</a>
+          </div>
+        </div>
+        <p className="small">
+          Not sure which door? <a href="#/collections">Compare door styles</a> by the price of a standard 10x10 kitchen and order a
+          sample door. Before you measure, read the <a href="#/measure">measuring guide</a>.
+        </p>
+      </section>
+
+
       <section className="container section" aria-labelledby="how-h">
         <h2 id="how-h">How ordering works</h2>
         <ol className="steps">

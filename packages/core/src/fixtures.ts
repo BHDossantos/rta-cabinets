@@ -7,6 +7,7 @@ import { type Sku, createCatalog, type Catalog } from './catalog';
 import type { PriceBook, PricingPolicy } from './pricing';
 import { inchesToMm } from './units';
 import type { PlanConfig } from './membership';
+import type { Collection } from './collections';
 
 const IN = inchesToMm;
 const factory = { bomRevision: 'FIXTURE-1', panelThicknessMm: 18, edgeTreatment: 'PVC 1mm' };
@@ -49,6 +50,8 @@ export const FIXTURE_SKUS: Sku[] = [
   front('F36-WHT', 36, 'White Shaker', ['FAM-BASE-PLY', 'FAM-WALL-PLY', 'FAM-BASE-ALU'], 8000),
   front('F48-WHT', 48, 'White Shaker', ['FAM-BASE-PLY'], 10500),
   front('F36-OAK', 36, 'Natural Oak', ['FAM-BASE-PLY', 'FAM-WALL-PLY'], 11000, 'wood'),
+  front('F30-OAK', 30, 'Natural Oak', ['FAM-BASE-PLY', 'FAM-WALL-PLY'], 9500, 'wood'),
+  front('F48-OAK', 48, 'Natural Oak', ['FAM-BASE-PLY'], 14500, 'wood'),
   front('F24-TALL', 24, 'White Shaker', ['FAM-TALL-PLY'], 16000),
   front('F36-ALU', 36, 'Brushed Aluminum', ['FAM-BASE-ALU'], 14000, 'aluminum'),
   {
@@ -73,6 +76,16 @@ export const FIXTURE_SKUS: Sku[] = [
     fulfillmentStage: 'samples', retailPrice: 900, images: [], taxCategory: 'cabinetry',
   },
   {
+    code: 'SMP-OAK', familyId: 'FAM-SAMPLE', name: 'Natural Oak door sample', kind: 'sample', status: 'active', mounting: 'none',
+    dimensions: { widthMm: 150, depthMm: 19, heightMm: 200 }, material: 'wood', finish: 'Natural Oak', purchasability: 'purchasable',
+    fulfillmentStage: 'samples', retailPrice: 900, images: [], taxCategory: 'cabinetry',
+  },
+  {
+    code: 'SMP-ALU', familyId: 'FAM-SAMPLE', name: 'Brushed Aluminum door sample', kind: 'sample', status: 'active', mounting: 'none',
+    dimensions: { widthMm: 150, depthMm: 19, heightMm: 200 }, material: 'aluminum', finish: 'Brushed Aluminum', purchasability: 'purchasable',
+    fulfillmentStage: 'samples', retailPrice: 900, images: [], taxCategory: 'cabinetry',
+  },
+  {
     code: 'CTR-QUARTZ', familyId: 'FAM-COUNTER', name: 'Quartz countertop (templated)', kind: 'surface', status: 'active', mounting: 'none',
     dimensions: { widthMm: 1, depthMm: 1, heightMm: 30 }, material: 'other', purchasability: 'quote_required', fulfillmentStage: 'third_party',
     retailPrice: null, images: [], taxCategory: 'surfaces',
@@ -93,4 +106,21 @@ export const FIXTURE_POLICY: PricingPolicy = {
 
 export const FIXTURE_PLANS: PlanConfig[] = [
   { id: 'pro-annual', name: 'Pro Annual (pilot)', interval: 'year', priceCents: null, limits: { activeProjects: 50, seats: 3, rendersPerMonth: 100 }, tradePricing: true, proOnlySkus: true, leadAccess: true },
+];
+
+/** SYNTHETIC collections; lead times are placeholders until the factory confirms them (D18). */
+export const FIXTURE_COLLECTIONS: Collection[] = [
+  {
+    id: 'white-shaker', name: 'White Shaker', doorStyle: 'shaker', finish: 'White Shaker', material: 'mdf', swatchHex: '#F4F2EC',
+    description: 'Painted five-piece shaker door on stocked plywood bodies.', sampleSkuCode: 'SMP-WHT', frontLeadTimeDays: { min: 5, max: 10 },
+  },
+  {
+    id: 'natural-oak', name: 'Natural Oak', doorStyle: 'shaker', finish: 'Natural Oak', material: 'wood', swatchHex: '#C8A273',
+    description: 'Clear-finished oak shaker door on stocked plywood bodies.', sampleSkuCode: 'SMP-OAK', frontLeadTimeDays: { min: 10, max: 15 },
+  },
+  {
+    id: 'brushed-aluminum', name: 'Brushed Aluminum (outdoor)', doorStyle: 'slab', finish: 'Brushed Aluminum', material: 'aluminum', swatchHex: '#B8BCC0',
+    description: 'Aluminum slab door for exterior-rated aluminum bodies. Outdoor kitchens are sold by individual cabinet.',
+    sampleSkuCode: 'SMP-ALU', frontLeadTimeDays: null, exteriorRated: true,
+  },
 ];

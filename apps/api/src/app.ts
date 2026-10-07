@@ -1,15 +1,15 @@
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import {
   type DesignDocument, type Entitlement, type Lead, type Project, type Quote, type ShipmentState,
   DomainError, applyCarrierStatus, assert, claimLead, compareCartToDesign, entitlementFor, expandDesign, fulfillmentStatus,
   getRevision, groupLines, leadViewFor, materialChanges, priceQuote, projectAccess, productionEligibility, recordApproval, releaseGate,
   revalidateQuote, saveRevision, searchDirectory, stableStringify, stageImport, validateDesign, validateShipment, visibleTo,
-  DESIGN_SCHEMA_VERSION, dollars,
+  DESIGN_SCHEMA_VERSION, dollars, TEN_BY_TEN, frontFor, tenByTenLines, designRequestMachine, transition, type DesignRequestState,
 } from '@rta/core';
 import { type Ctx, Router, readBody, send, sendError } from './http';
 import { type Persistence, StateSync } from './persistence';
-import { type Cart, type Order, Store, type User, seedStore } from './store';
+import { type Cart, type DesignRequest, type Order, Store, type User, seedStore } from './store';
 
 export interface AppOptions {
   store?: Store;
@@ -112,6 +112,8 @@ export function createApp(opts: AppOptions = {}) {
     throw new DomainError('unauthorized', 'Sign in or start a guest design first');
   };
 
+  const newGuestToken = () => `gst_${randomBytes(16).toString('hex')}`;
+
   const parseDocument = (value: unknown): DesignDocument => {
     const d = value as DesignDocument;
     assert(d && typeof d === 'object', 'validation', 'document is required');
@@ -196,6 +198,50 @@ export function createApp(opts: AppOptions = {}) {
     return { catalogVersion: store.catalog.version, items };
   });
 
+  /**
+   * Door-style collections with the 10x10 benchmark priced by the server (retail, and
+   * trade for entitled members), stocked-body availability and front lead time.
+   */
+  router.on('GET', '/api/collections', (ctx) => {
+    const ent = entitlementOf(principal(ctx).user);
+    const retail = { tradePricing: false, proOnlySkus: false };
+    const priced = (lines: { skuCode: string; quantity: number }[], e: Entitlement) => priceQuote(store.catalog, store.priceBook, store.policy, {
+      lines, entitlement: e, shipping: { status: 'pending_quote' }, taxStatus: 'pending', now: now(), calculationId: store.id('calc'),
+    });
+    const collections = store.collections.map((c) => {
+      const t = tenByTenLines(c, store.catalog);
+      const complete = t.missing.length === 0 && t.lines.length > 0;
+      const retailQuote = complete ? priced(t.lines, retail) : null;
+      const tradeQuote = complete && ent.tradePricing ? priced(t.lines, ent) : null;
+      // Stock is checked against the bodies this style actually fits: the 10x10 list when the
+      // style supplies it, otherwise every active body that has a door in this style.
+      const bodies = complete
+        ? TEN_BY_TEN.map((i) => ({ code: i.bodyCode, need: i.quantity }))
+        : [...store.catalog.skus.values()].filter((s) => s.kind === 'body' && s.status === 'active' && frontFor(c, s, store.catalog)).map((s) => ({ code: s.code, need: 1 }));
+      const bodiesInStock = bodies.length > 0 && bodies.every((b) => store.inventory.availableToPromise(b.code, 'wh-main', now()) >= b.need);
+      const sample = c.sampleSkuCode ? store.catalog.skus.get(c.sampleSkuCode) : undefined;
+      const fronts = [...store.catalog.skus.values()].filter((s) => s.kind === 'front' && s.status === 'active' && s.finish === c.finish).map((s) => s.code);
+      return {
+        ...c,
+        fronts,
+        sample: sample && sample.status === 'active' ? { code: sample.code, priceCents: sample.retailPrice } : null,
+        bodiesInStock,
+        tenByTen: {
+          available: complete,
+          retailCents: retailQuote?.merchandiseTotal.amount ?? null,
+          tradeCents: tradeQuote?.merchandiseTotal.amount ?? null,
+          priceBookVersion: store.priceBook.version,
+          missing: t.missing,
+          lines: t.lines,
+        },
+      };
+    });
+    return {
+      collections,
+      tenByTenDefinition: { items: TEN_BY_TEN, excludes: ['fillers', 'moldings', 'countertops', 'appliances', 'freight', 'tax', 'installation'] },
+    };
+  });
+
   router.on('POST', '/api/imports/stage', (ctx) => {
     requireRole(ctx, 'admin');
     return stageImport(ctx.rawBody, store.catalog);
@@ -211,7 +257,9 @@ export function createApp(opts: AppOptions = {}) {
       ? { id, ownerType: 'user', ownerId: p.user.id, name: body.name ?? 'Untitled project', revisions: [], approvedRevision: null, approvals: [] }
       : { id, ownerType: 'guest', ownerId: id, name: body.name ?? 'Untitled project', revisions: [], approvedRevision: null, approvals: [] };
     if (!p.user) {
-      guestToken = `gst_${createHash('sha256').update(`${id}:${Math.random()}:${now().getTime()}`).digest('hex').slice(0, 32)}`;
+      // Reuse a cart-only guest token so the guest's cart stays with their design.
+      const reusable = p.guestToken && store.guestTokens.get(p.guestToken) === '';
+      guestToken = reusable ? p.guestToken! : newGuestToken();
       store.guestTokens.set(guestToken, id);
     }
     const key = windowKey(project);
@@ -306,11 +354,22 @@ export function createApp(opts: AppOptions = {}) {
     return cartView(cart);
   });
 
+  /**
+   * Guests can shop (samples, quick order) without designing first: a guest with no
+   * token gets a cart-only token, which a later guest design reuses.
+   */
   router.on('POST', '/api/carts', (ctx) => {
+    const p = principal(ctx);
+    let guestToken: string | undefined;
+    if (!p.user && !(p.guestToken && store.guestTokens.has(p.guestToken))) {
+      guestToken = newGuestToken();
+      store.guestTokens.set(guestToken, '');
+      ctx.headers['x-guest-token'] = guestToken;
+    }
     const cart: Cart = { id: store.id('cart'), ownerId: ownerKey(ctx), lines: [], updatedAt: now().toISOString() };
     store.carts.set(cart.id, cart);
     ctx.res.statusCode = 201;
-    return cartView(cart);
+    return { ...cartView(cart), guestToken };
   });
 
   router.on('GET', '/api/carts/:id', (ctx) => cartView(loadCart(ctx, ctx.params.id!)));
@@ -546,6 +605,132 @@ export function createApp(opts: AppOptions = {}) {
     store.referrals.set(referral.id, referral);
     ctx.res.statusCode = 201;
     return { id: referral.id, status: referral.status, message: 'Submitted for contact. This is not a credit approval.' };
+  });
+
+  // --- customer dashboard (spec section 4: projects, orders, design requests) ---
+  router.on('GET', '/api/me/projects', (ctx) => {
+    const user = requireUser(ctx);
+    const projects = [...store.projects.values()]
+      .filter((p) => (p.ownerType === 'user' && p.ownerId === user.id) || (p.ownerType === 'organization' && user.orgIds.includes(p.ownerId)))
+      .map((p) => {
+        const latest = p.revisions.at(-1)!;
+        return {
+          id: p.id, name: p.name, latestRevision: latest.number, approvedRevision: p.approvedRevision, updatedAt: latest.createdAt,
+          roomType: latest.document.room.type, cabinets: latest.document.instances.length, access: accessFor(windowKey(p), user),
+        };
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+    return { projects };
+  });
+
+  router.on('GET', '/api/me/orders', (ctx) => {
+    const user = requireUser(ctx);
+    const orders = [...store.orders.values()]
+      .filter((o) => o.ownerId === user.id)
+      .map((o) => {
+        const f = fulfillmentStatus(o.lines.map((l) => ({ id: l.id, skuCode: l.skuCode, quantity: l.quantity, stage: l.stage })), o.shipments);
+        return {
+          id: o.id, createdAt: o.createdAt, totalCents: o.totalCents, paymentState: o.paymentState,
+          manufacturingState: o.manufacturingState, fulfillment: f.overall, projectId: o.projectId, revisionNumber: o.revisionNumber,
+          items: o.lines.reduce((n, l) => n + l.quantity, 0),
+        };
+      })
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return { orders };
+  });
+
+  // --- professional design service (spec section 11) ---
+  const designRequestView = (r: DesignRequest, staff: boolean) => {
+    const { ownerId: _owner, ...rest } = r;
+    return staff ? r : rest;
+  };
+  const loadDesignRequest = (ctx: Ctx, id: string) => {
+    const user = requireUser(ctx);
+    const r = store.designRequests.get(id);
+    const staff = user.roles.some((x) => x === 'internal_designer' || x === 'admin');
+    if (!r || !(staff || r.ownerId === user.id)) throw new DomainError('not_found', 'Design request not found');
+    return { r, user, staff };
+  };
+
+  /**
+   * Intake form. Missing requirements are reported before submission; the request is
+   * stored as Submitted with a reference and visible status (spec 11, steps 1-2).
+   */
+  router.on('POST', '/api/design-requests', (ctx) => {
+    const user = requireUser(ctx);
+    const b = ctx.body as Partial<DesignRequest> & { projectId?: string };
+    const missing: string[] = [];
+    if (!b.roomType) missing.push('roomType');
+    if (!/^\d{5}$/.test(String(b.zip ?? ''))) missing.push('zip');
+    if (!b.timeline) missing.push('timeline');
+    if (!b.budgetRange) missing.push('budgetRange');
+    if (!Array.isArray(b.services) || b.services.length === 0) missing.push('services');
+    if (!['email', 'phone', 'either'].includes(String(b.contactPreference))) missing.push('contactPreference');
+    if (b.contactPreference && b.contactPreference !== 'email' && !b.phone) missing.push('phone');
+    if (missing.length) throw new DomainError('validation', 'Some required details are missing', { missing });
+    let revisionNumber: number | undefined;
+    if (b.projectId) revisionNumber = loadProject(ctx, b.projectId).revisions.at(-1)!.number;
+    const id = store.id('dr');
+    const created = now();
+    const request: DesignRequest = {
+      id, ownerId: user.id, projectId: b.projectId, revisionNumber, state: 'submitted',
+      roomType: String(b.roomType), zip: String(b.zip), timeline: String(b.timeline), budgetRange: String(b.budgetRange),
+      services: b.services!.map(String), appliances: String(b.appliances ?? ''), preferredMaterials: String(b.preferredMaterials ?? ''),
+      contactPreference: b.contactPreference as DesignRequest['contactPreference'], phone: b.phone ? String(b.phone) : undefined,
+      notes: String(b.notes ?? ''), history: [transition(designRequestMachine, 'draft', 'submitted', user.id, created)],
+      messages: [], createdAt: created.toISOString(),
+    };
+    store.designRequests.set(id, request);
+    audit(user.id, 'design_request.submit', id);
+    ctx.res.statusCode = 201;
+    return designRequestView(request, false);
+  });
+
+  router.on('GET', '/api/me/design-requests', (ctx) => {
+    const user = requireUser(ctx);
+    return { requests: [...store.designRequests.values()].filter((r) => r.ownerId === user.id).map((r) => designRequestView(r, false)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) };
+  });
+
+  router.on('GET', '/api/design-requests', (ctx) => {
+    requireRole(ctx, 'internal_designer', 'admin');
+    const state = ctx.query.get('state');
+    return { requests: [...store.designRequests.values()].filter((r) => !state || r.state === state).sort((a, b) => a.createdAt.localeCompare(b.createdAt)) };
+  });
+
+  router.on('GET', '/api/design-requests/:id', (ctx) => {
+    const { r, staff } = loadDesignRequest(ctx, ctx.params.id!);
+    return designRequestView(r, staff);
+  });
+
+  /** Clarifications live in the request record, not in email (spec 11, step 2). */
+  router.on('POST', '/api/design-requests/:id/messages', (ctx) => {
+    const { r, user, staff } = loadDesignRequest(ctx, ctx.params.id!);
+    const text = String((ctx.body as { text?: string }).text ?? '').trim();
+    assert(text.length > 0 && text.length <= 4000, 'validation', 'Message must be 1–4000 characters');
+    r.messages.push({ from: staff ? 'designer' : 'customer', authorId: user.id, text, at: now().toISOString() });
+    // A customer reply to a clarification request returns the work to the designer.
+    if (!staff && r.state === 'needs_information') {
+      r.history.push(transition(designRequestMachine, 'needs_information', 'in_design', user.id, now(), 'customer replied'));
+      r.state = 'in_design';
+    }
+    return designRequestView(r, staff);
+  });
+
+  /** Staff workflow: assign, request information, design, send for review (state machine enforced). */
+  router.on('POST', '/api/design-requests/:id/transition', (ctx) => {
+    const { r, user, staff } = loadDesignRequest(ctx, ctx.params.id!);
+    const b = ctx.body as { to?: DesignRequestState; reason?: string; assignTo?: string };
+    const to = b.to as DesignRequestState;
+    const customerAllowed: DesignRequestState[] = ['withdrawn'];
+    if (!staff && !customerAllowed.includes(to)) throw new DomainError('forbidden', 'Only the design team can make this change');
+    if (to === 'needs_information') assert(!!b.reason?.trim(), 'validation', 'Say what information is needed');
+    const record = transition(designRequestMachine, r.state, to, user.id, now(), b.reason);
+    r.history.push(record);
+    r.state = to;
+    if (to === 'assigned') r.assignedTo = b.assignTo ?? user.id;
+    if (to === 'needs_information' && b.reason) r.messages.push({ from: 'designer', authorId: user.id, text: b.reason, at: now().toISOString() });
+    audit(user.id, `design_request.${to}`, r.id, b.reason);
+    return designRequestView(r, staff);
   });
 
   router.on('GET', '/api/me', (ctx) => {

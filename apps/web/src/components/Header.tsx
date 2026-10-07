@@ -4,11 +4,15 @@ import { DEMO_ACCOUNTS, type DemoAccount } from '../storage';
 const NAV = [
   { href: '#/', label: 'Home', key: '' },
   { href: '#/design', label: 'Design', key: 'design' },
+  { href: '#/design-service', label: 'Free design', key: 'design-service' },
+  { href: '#/collections', label: 'Door styles', key: 'collections' },
   { href: '#/shop', label: 'Shop', key: 'shop' },
+  { href: '#/quick-order', label: 'Quick order', key: 'quick-order' },
   { href: '#/cart', label: 'Cart', key: 'cart' },
   { href: '#/installers', label: 'Installers', key: 'installers' },
   { href: '#/financing', label: 'Financing', key: 'financing' },
   { href: '#/pro', label: 'Pro', key: 'pro' },
+  { href: '#/account', label: 'Account', key: 'account' },
 ];
 
 export function Header({ current, account, onAccountChange }: { current: string; account: DemoAccount; onAccountChange: (a: DemoAccount) => void }) {

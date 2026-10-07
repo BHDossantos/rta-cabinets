@@ -62,6 +62,69 @@ export interface OrderView {
   fulfillment: { overall: OrderFulfillmentStatus; groups: GroupStatus[] };
 }
 
+export interface DesignRequestView {
+  id: string;
+  projectId?: string;
+  revisionNumber?: number;
+  state: string;
+  roomType: string;
+  zip: string;
+  timeline: string;
+  budgetRange: string;
+  services: string[];
+  appliances: string;
+  preferredMaterials: string;
+  contactPreference: 'email' | 'phone' | 'either';
+  phone?: string;
+  notes: string;
+  assignedTo?: string;
+  history: { from: string; to: string; actorId: string; at: string; reason?: string }[];
+  messages: { from: 'customer' | 'designer'; authorId: string; text: string; at: string }[];
+  createdAt: string;
+}
+
+export interface DesignRequestInput {
+  projectId?: string;
+  roomType: string;
+  zip: string;
+  timeline: string;
+  budgetRange: string;
+  services: string[];
+  appliances: string;
+  preferredMaterials: string;
+  contactPreference: 'email' | 'phone' | 'either';
+  phone?: string;
+  notes: string;
+}
+
+export interface MyProject {
+  id: string; name: string; latestRevision: number; approvedRevision: number | null; updatedAt: string; roomType: string; cabinets: number;
+  access: { access: 'edit' | 'read_only'; endsAt: string | null };
+}
+export interface MyOrder {
+  id: string; createdAt: string; totalCents: number; paymentState: string; manufacturingState: string; fulfillment: string;
+  projectId?: string; revisionNumber?: number; items: number;
+}
+
+export interface CollectionView {
+  id: string;
+  name: string;
+  doorStyle: string;
+  finish: string;
+  material: string;
+  swatchHex: string;
+  description: string;
+  frontLeadTimeDays: { min: number; max: number } | null;
+  exteriorRated?: boolean;
+  fronts: string[];
+  sample: { code: string; priceCents: number | null } | null;
+  bodiesInStock: boolean;
+  tenByTen: {
+    available: boolean; retailCents: number | null; tradeCents: number | null; priceBookVersion: string;
+    missing: { bodyCode: string; reason: string }[]; lines: { skuCode: string; quantity: number }[];
+  };
+}
+
 export interface MeView {
   user: { id: string; name: string; roles: string[]; orgIds: string[] } | null;
   entitlement: { tradePricing: boolean; proOnlySkus: boolean; leadAccess: boolean };
@@ -109,11 +172,12 @@ export const api = {
   saveRevision: (id: string, baseRevision: number, document: DesignDocument) =>
     request<{ revision: number; contentHash: string; savedAt: string }>('POST', `/api/projects/${encodeURIComponent(id)}/revisions`, { baseRevision, document }),
 
+  quoteLines: (lines: { skuCode: string; quantity: number }[]) => request<{ quote: Quote }>('POST', '/api/quotes', { lines }),
   quoteDesign: (document: DesignDocument) =>
     request<{ quote: Quote; expansion: DesignExpansion; validation: ValidationReport }>('POST', '/api/quotes', { document }),
 
   cartFromDesign: (projectId: string, revision?: number) => request<CartView>('POST', '/api/carts/from-design', { projectId, revision }),
-  createCart: () => request<CartView>('POST', '/api/carts', {}),
+  createCart: () => request<CartView & { guestToken?: string }>('POST', '/api/carts', {}),
   getCart: (id: string) => request<CartView>('GET', `/api/carts/${encodeURIComponent(id)}`),
   patchCart: (id: string, lines: { skuCode: string; quantity: number }[]) =>
     request<CartView>('PATCH', `/api/carts/${encodeURIComponent(id)}`, { lines }),
@@ -126,6 +190,17 @@ export const api = {
   /** Development-only test payment; the server sets the amount. */
   testPayment: (orderId: string, outcome: 'succeeded' | 'failed') =>
     request<{ paymentState: string }>('POST', `/api/dev/payments/${encodeURIComponent(orderId)}`, { outcome }),
+
+  collections: () => request<{ collections: CollectionView[]; tenByTenDefinition: { items: { bodyCode: string; quantity: number; label: string }[]; excludes: string[] } }>('GET', '/api/collections'),
+  myProjects: () => request<{ projects: MyProject[] }>('GET', '/api/me/projects'),
+  myOrders: () => request<{ orders: MyOrder[] }>('GET', '/api/me/orders'),
+  myDesignRequests: () => request<{ requests: DesignRequestView[] }>('GET', '/api/me/design-requests'),
+  createDesignRequest: (body: DesignRequestInput) => request<DesignRequestView>('POST', '/api/design-requests', body),
+  designQueue: () => request<{ requests: DesignRequestView[] }>('GET', '/api/design-requests'),
+  designRequestMessage: (id: string, text: string) =>
+    request<DesignRequestView>('POST', `/api/design-requests/${encodeURIComponent(id)}/messages`, { text }),
+  designRequestTransition: (id: string, to: string, reason?: string) =>
+    request<DesignRequestView>('POST', `/api/design-requests/${encodeURIComponent(id)}/transition`, { to, reason }),
 
   getOrder: (id: string) => request<OrderView>('GET', `/api/orders/${encodeURIComponent(id)}`),
 

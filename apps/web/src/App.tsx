@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { Header } from './components/Header';
+import { AccountPage } from './pages/AccountPage';
 import { CartPage } from './pages/CartPage';
+import { DesignServicePage } from './pages/DesignServicePage';
+import { MeasurePage } from './pages/MeasurePage';
+import { CollectionsPage } from './pages/CollectionsPage';
+import { QuickOrderPage } from './pages/QuickOrderPage';
 import { FinancingPage } from './pages/FinancingPage';
 import { HomePage } from './pages/HomePage';
 import { InstallersPage } from './pages/InstallersPage';
@@ -43,6 +48,21 @@ export function App() {
       break;
     case 'financing':
       page = <FinancingPage account={account} />;
+      break;
+    case 'design-service':
+      page = <DesignServicePage account={account} />;
+      break;
+    case 'collections':
+      page = <CollectionsPage />;
+      break;
+    case 'quick-order':
+      page = <QuickOrderPage />;
+      break;
+    case 'measure':
+      page = <MeasurePage />;
+      break;
+    case 'account':
+      page = <AccountPage account={account} />;
       break;
     case 'pro':
       page = <ProPage account={account} />;

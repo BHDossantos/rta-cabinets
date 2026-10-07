@@ -99,6 +99,8 @@ describe.skipIf(!ADMIN_URL)('PostgreSQL persistence (TEST_DATABASE_URL)', () => 
     const order = (await a.req('POST', '/api/checkout-sessions', { cartId: cart.id, acceptedTotalCents: total }, { ...H, 'idempotency-key': 'restart-order' })).body;
     const evt = JSON.stringify({ id: 'evt-restart', type: 'payment.succeeded', orderId: order.orderId, amountCents: total });
     expect((await a.req('POST', '/api/webhooks/mockpay', evt, { 'x-mockpay-signature': signWebhook('s', evt) })).body).toEqual({ received: true });
+    const dr = await a.req('POST', '/api/design-requests', { roomType: 'kitchen', zip: '33101', timeline: 'soon', budgetRange: 'x', services: ['layout'], contactPreference: 'email' }, H);
+    expect(dr.status).toBe(201);
     await a.close();
     await p1.close();
 
@@ -109,6 +111,7 @@ describe.skipIf(!ADMIN_URL)('PostgreSQL persistence (TEST_DATABASE_URL)', () => 
     const b = await boot(createApp({ store: second.store, persistence: p2, webhookSecret: 's' }));
     const loaded = await b.req('GET', `/api/projects/${project.id}`, undefined, H);
     expect(loaded.body.document).toEqual(exampleA());
+    expect((await b.req('GET', '/api/me/design-requests', undefined, H)).body.requests.map((r: any) => r.id)).toEqual([dr.body.id]);
     const paid = await b.req('GET', `/api/orders/${order.orderId}`, undefined, H);
     expect(paid.body.paymentState).toBe('paid');
     expect(paid.body.totalCents).toBe(total);
@@ -136,7 +139,7 @@ describe.skipIf(!ADMIN_URL)('PostgreSQL persistence (TEST_DATABASE_URL)', () => 
 
   it('applies each migration once', async () => {
     const p = await PgPersistence.connect(url);
-    expect(await p.migrate()).toEqual([]);
+    expect(await p.migrate()).toEqual([]); // 001 and 002 already applied on first connect
     await p.close();
   });
 });

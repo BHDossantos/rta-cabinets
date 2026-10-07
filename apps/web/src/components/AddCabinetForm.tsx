@@ -2,6 +2,7 @@ import { type DesignDocument, type DesignInstance, type DisplayUnit, parseLength
 import { type FormEvent, useEffect, useState } from 'react';
 import type { PublicSku } from '../api';
 import { lengthFieldValue } from '../format';
+import { getPreferredFinish } from '../storage';
 import {
   BodyOptions, DEFAULT_WALL_UNIT_ELEVATION_MM, FrontOptions, HingeOptions, compatibleFronts, compatibleHinges, nextFreeOffset,
   nextInstanceId,
@@ -39,7 +40,10 @@ export function AddCabinetForm({
 
   useEffect(() => {
     setElevText(lengthFieldValue(body?.mounting === 'wall' ? DEFAULT_WALL_UNIT_ELEVATION_MM : 0, unit));
-    setFront(compatibleFronts(body, items).matching[0]?.code ?? '');
+    // A door style chosen on the styles page applies to every cabinet added here.
+    const matching = compatibleFronts(body, items).matching;
+    const preferred = getPreferredFinish();
+    setFront((preferred && matching.find((f) => f.finish === preferred)?.code) ?? matching[0]?.code ?? '');
     setHinge(compatibleHinges(body, items)[0]?.code ?? '');
   }, [body, items, unit]);
 
@@ -110,6 +114,9 @@ export function AddCabinetForm({
           </select>
         </div>
       </div>
+      {getPreferredFinish() && (
+        <p className="small muted">Door style: {getPreferredFinish()} (<a href="#/collections">change</a>). Cabinets without a door in this style use the closest match.</p>
+      )}
       {error && <p className="field-error" role="alert">⛔ {error}</p>}
       <button type="submit" className="btn btn-primary">Add cabinet</button>
     </form>

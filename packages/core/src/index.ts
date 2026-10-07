@@ -15,4 +15,6 @@ export * from './fulfillment';
 export * from './leads';
 export * from './membership';
 export * from './projects';
+export * from './collections';
+export * from './quickorder';
 export * from './fixtures';
