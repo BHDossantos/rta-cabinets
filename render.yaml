@@ -1,0 +1,29 @@
+# Render Blueprint: connect this repository in Render (New > Blueprint) to create
+# the web service and its PostgreSQL database. This is a DEMO deployment: the
+# demo account switcher and test payments are on, and all catalog data and
+# prices are synthetic. Do not take real orders until real sign-in and a real
+# payment provider are connected.
+services:
+  - type: web
+    name: rta-cabinets
+    runtime: docker
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
+    branch: main
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_TEST_PAYMENTS
+        value: "true"
+      - key: MOCKPAY_WEBHOOK_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rta-cabinets-db
+          property: connectionString
+
+databases:
+  - name: rta-cabinets-db
+    plan: basic-256mb
+    postgresMajorVersion: "16"

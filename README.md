@@ -32,6 +32,20 @@ No payment provider is connected yet. In development, the order page has **Simul
 
 Features follow what leading cabinet manufacturer and RTA sites do well; see [`docs/competitive-research.md`](docs/competitive-research.md) for the 20 sites reviewed and what was adopted.
 
+## Going live (demo deployment)
+
+The API also serves the built web app, so the whole site runs as one service:
+
+```bash
+npm run build -w @rta/web
+NODE_ENV=production DATABASE_URL=postgres://… npm start -w @rta/api   # http://localhost:8787
+```
+
+- **Render (simplest):** in Render choose *New → Blueprint* and pick this repository. `render.yaml` creates the web service and a PostgreSQL 16 database, and redeploys on every push to `main`.
+- **Any container host** (Fly.io, Railway, Cloud Run, AWS): use the `Dockerfile`. It listens on `PORT` (default 8080), with the health check at `/api/health`. Set `DATABASE_URL`, plus `ENABLE_TEST_PAYMENTS=true` for a demo.
+
+**Before real customers:** the demo account switcher and test payments must be replaced by real sign-in and a real payment provider, and the synthetic catalog and prices by the factory's data.
+
 ## Layout
 
 | Path | What |
