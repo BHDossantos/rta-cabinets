@@ -7,7 +7,7 @@ import type {
   CartComparison, CartLine, DesignDocument, DesignExpansion, GroupStatus, OrderFulfillmentStatus, Quote,
   Sku, ValidationReport,
 } from '@rta/core';
-import { getDemoAccount, getGuestToken } from './storage';
+import { getGuestToken, getIdentity, isDemoIdentity } from './storage';
 
 export interface ApiErrorBody {
   code: string;
@@ -126,14 +126,16 @@ export interface CollectionView {
 }
 
 export interface MeView {
-  user: { id: string; name: string; roles: string[]; orgIds: string[] } | null;
+  user: { id: string; name: string; email: string; roles: string[]; orgIds: string[] } | null;
+  via: 'session' | 'demo' | null;
+  demoAuth: boolean;
   entitlement: { tradePricing: boolean; proOnlySkus: boolean; leadAccess: boolean };
 }
 
 async function request<T>(method: string, path: string, body?: unknown, extraHeaders: Record<string, string> = {}): Promise<T> {
   const headers: Record<string, string> = { accept: 'application/json', ...extraHeaders };
-  const account = getDemoAccount();
-  if (account !== 'guest') headers['x-user-id'] = account;
+  const account = getIdentity();
+  if (isDemoIdentity(account)) headers['x-user-id'] = account;
   const token = getGuestToken();
   if (token) headers['x-guest-token'] = token;
   if (body !== undefined) headers['content-type'] = 'application/json';
@@ -158,6 +160,14 @@ async function request<T>(method: string, path: string, body?: unknown, extraHea
 
 export const api = {
   me: () => request<MeView>('GET', '/api/me'),
+  register: (body: { name: string; email: string; password: string; accountType: 'homeowner' | 'pro'; businessName?: string; acceptTerms: boolean }) =>
+    request<{ user: NonNullable<MeView['user']>; attached: { projectId?: string; carts: string[] } }>('POST', '/api/auth/register', body),
+  login: (email: string, password: string) =>
+    request<{ user: NonNullable<MeView['user']>; attached: { projectId?: string; carts: string[] } }>('POST', '/api/auth/login', { email, password }),
+  logout: () => request<{ signedOut: boolean }>('POST', '/api/auth/logout', {}),
+  adminUsers: () => request<{ users: NonNullable<MeView['user']>[] }>('GET', '/api/admin/users'),
+  adminRoles: (email: string, grant: string[], revoke: string[]) =>
+    request<{ user: NonNullable<MeView['user']> }>('POST', '/api/admin/users/roles', { email, grant, revoke }),
 
   skus: (params: { kind?: string; mounting?: string; q?: string } = {}) => {
     const qs = new URLSearchParams();

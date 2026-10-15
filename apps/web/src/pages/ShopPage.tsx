@@ -171,7 +171,7 @@ function ProductDetail({ sku, account }: { sku: PublicSku; account: DemoAccount 
             {status.message}
             {status.needsIdentity && account === 'guest' && (
               <p>
-                Guests get a cart after starting a design. <a href="#/design">Start a design</a> or choose a demo account in the header.
+                Guests get a cart after starting a design. <a href="#/design">Start a design</a> or <a href="#/signin">sign in</a>.
               </p>
             )}
           </Notice>

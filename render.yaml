@@ -1,8 +1,9 @@
 # Render Blueprint: connect this repository in Render (New > Blueprint) to create
-# the web service and its PostgreSQL database. This is a DEMO deployment: the
-# demo account switcher and test payments are on, and all catalog data and
-# prices are synthetic. Do not take real orders until real sign-in and a real
-# payment provider are connected.
+# the web service and its PostgreSQL database. Render asks for ADMIN_EMAIL and
+# ADMIN_PASSWORD (the owner's first login). Customers create real accounts; the
+# demo account switcher is off. Test payments are on and all catalog data and
+# prices are synthetic: do not take real orders until a real payment provider
+# and the factory's catalog are connected.
 services:
   - type: web
     name: rta-cabinets
@@ -18,6 +19,10 @@ services:
         value: "true"
       - key: MOCKPAY_WEBHOOK_SECRET
         generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
       - key: DATABASE_URL
         fromDatabase:
           name: rta-cabinets-db

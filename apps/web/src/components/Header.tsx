@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { DEMO_ACCOUNTS, type DemoAccount } from '../storage';
+import type { MeView } from '../api';
+import { DEMO_ACCOUNTS, type DemoAccount, type DemoId } from '../storage';
 
 const NAV = [
   { href: '#/', label: 'Home', key: '' },
@@ -15,7 +16,14 @@ const NAV = [
   { href: '#/account', label: 'Account', key: 'account' },
 ];
 
-export function Header({ current, account, onAccountChange }: { current: string; account: DemoAccount; onAccountChange: (a: DemoAccount) => void }) {
+export function Header({ current, account, me, onAccountChange, onSignOut }: {
+  current: string;
+  account: DemoAccount;
+  me: MeView;
+  onAccountChange: (a: DemoId) => void;
+  onSignOut: () => void;
+}) {
+  const signedIn = me.via === 'session' && me.user;
   const [menuOpen, setMenuOpen] = useState(false);
   return (
     <header className="site-header">
@@ -38,15 +46,27 @@ export function Header({ current, account, onAccountChange }: { current: string;
             ))}
           </ul>
         </nav>
-        <div className="account-switcher">
-          <label htmlFor="demo-account">
-            Demo account <span className="dev-tag">development stub</span>
-          </label>
-          <select id="demo-account" value={account} onChange={(e) => onAccountChange(e.target.value as DemoAccount)}>
-            {DEMO_ACCOUNTS.map((a) => (
-              <option key={a.id} value={a.id}>{a.label}</option>
-            ))}
-          </select>
+        <div className="account-area">
+          {signedIn ? (
+            <p className="signed-in">
+              <span>Signed in as <strong>{me.user!.name}</strong></span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={onSignOut}>Sign out</button>
+            </p>
+          ) : (
+            <a href="#/signin" className="btn btn-secondary btn-sm" aria-current={current === 'signin' ? 'page' : undefined}>Sign in</a>
+          )}
+          {!signedIn && me.demoAuth && (
+            <div className="account-switcher">
+              <label htmlFor="demo-account">
+                Demo account <span className="dev-tag">development stub</span>
+              </label>
+              <select id="demo-account" value={account} onChange={(e) => onAccountChange(e.target.value as DemoId)}>
+                {DEMO_ACCOUNTS.map((a) => (
+                  <option key={a.id} value={a.id}>{a.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
     </header>

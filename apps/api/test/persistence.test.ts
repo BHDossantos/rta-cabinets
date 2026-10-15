@@ -17,7 +17,7 @@ async function boot(app: ReturnType<typeof createApp>) {
       method, headers: { 'content-type': 'application/json', ...headers },
       body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
     });
-    return { status: res.status, body: (await res.json()) as any };
+    return { status: res.status, body: (await res.json()) as any, cookie: (res.headers.get('set-cookie') ?? '').split(';')[0] ?? '' };
   };
   return { req, close: () => new Promise<void>((r) => srv.close(() => r())) };
 }
@@ -101,6 +101,8 @@ describe.skipIf(!ADMIN_URL)('PostgreSQL persistence (TEST_DATABASE_URL)', () => 
     expect((await a.req('POST', '/api/webhooks/mockpay', evt, { 'x-mockpay-signature': signWebhook('s', evt) })).body).toEqual({ received: true });
     const dr = await a.req('POST', '/api/design-requests', { roomType: 'kitchen', zip: '33101', timeline: 'soon', budgetRange: 'x', services: ['layout'], contactPreference: 'email' }, H);
     expect(dr.status).toBe(201);
+    const signup = await a.req('POST', '/api/auth/register', { name: 'Durable', email: 'durable@example.test', password: 'long enough password', accountType: 'homeowner', acceptTerms: true });
+    expect(signup.status).toBe(201);
     await a.close();
     await p1.close();
 
@@ -112,6 +114,9 @@ describe.skipIf(!ADMIN_URL)('PostgreSQL persistence (TEST_DATABASE_URL)', () => 
     const loaded = await b.req('GET', `/api/projects/${project.id}`, undefined, H);
     expect(loaded.body.document).toEqual(exampleA());
     expect((await b.req('GET', '/api/me/design-requests', undefined, H)).body.requests.map((r: any) => r.id)).toEqual([dr.body.id]);
+    // Sessions and password logins survive a restart.
+    expect((await b.req('GET', '/api/me', undefined, { cookie: signup.cookie })).body.user.email).toBe('durable@example.test');
+    expect((await b.req('POST', '/api/auth/login', { email: 'durable@example.test', password: 'long enough password' })).status).toBe(200);
     const paid = await b.req('GET', `/api/orders/${order.orderId}`, undefined, H);
     expect(paid.body.paymentState).toBe('paid');
     expect(paid.body.totalCents).toBe(total);

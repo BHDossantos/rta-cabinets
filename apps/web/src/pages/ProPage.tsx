@@ -58,7 +58,7 @@ export function ProPage({ account }: { account: DemoAccount }) {
               <li>{me.me.entitlement.leadAccess ? '✓ Lead access included in plan' : '✕ No lead access'}</li>
             </ul>
           ) : (
-            <Notice tone="info" title="Not signed in">Choose the Pro demo account in the header to see trade pricing in estimates and carts.</Notice>
+            <Notice tone="info" title="Not signed in">Pros see trade pricing after signing in with a Pro account that has an active plan. <a href="#/signin">Sign in or create a Pro account</a>.</Notice>
           )
         )}
       </section>

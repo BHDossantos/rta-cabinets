@@ -101,8 +101,7 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
         </Notice>
       ) : !signedIn ? (
         <Notice tone="info" title="Sign in to request a design">
-          Design requests are kept in your account so the designer can ask questions and you can follow the status. Choose a demo account in the
-          header to continue.
+          Design requests are kept in your account so the designer can ask questions and you can follow the status. <a href="#/signin">Sign in or create an account</a> to continue.
         </Notice>
       ) : (
         <form className="card stack" onSubmit={submit} aria-labelledby="req-h" noValidate>

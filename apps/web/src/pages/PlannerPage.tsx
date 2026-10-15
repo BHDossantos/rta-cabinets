@@ -382,7 +382,7 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
           <p className="small muted">You can edit this project until {new Date(access.endsAt).toLocaleDateString()}.</p>
         )}
         {account === 'guest' && (
-          <Notice tone="info" title="Guest design">Create an account to save and return to this project. Download your plan before leaving.</Notice>
+          <Notice tone="info" title="Guest design"><a href="#/signin">Create an account</a> to save and return to this project. Download your plan before leaving.</Notice>
         )}
 
         <nav aria-label="Planner steps" className="stepper">

@@ -36,7 +36,7 @@ db/schema.sql   PostgreSQL system-of-record design (checked against PostgreSQL 1
 ## Going to production (next steps)
 
 1. **Done for the pilot:** durable PostgreSQL persistence (`apps/api/src/persistence.ts`, `db/migrations/`). The API keeps its working state in memory. Mutating requests run one at a time, and each one's changed rows are written in a single transaction before the response is sent. If that write fails, memory is reloaded from the database and the client gets a 503, so nothing is half-saved. An advisory lock allows one API instance per database. **Next, for scale-out:** move to the normalized `db/schema.sql` with per-route transactions, `SELECT … FOR UPDATE` reservations and the unique indexes shown there, which allows several API instances and SQL reporting.
-2. Replace the `x-user-id` development auth with the chosen identity provider (D24). The header is a dev stub and **must not** ship.
+2. **Done:** real accounts (`apps/api/src/auth.ts`): email and password with scrypt, server-side sessions in an HttpOnly cookie, login lockout, and an Origin check in production. The `x-user-id` demo header is refused in production unless `ALLOW_DEMO_ACCOUNTS=true`. **Next:** email verification and password reset once an email provider is chosen; SSO for staff if wanted.
 3. Put payments behind a provider adapter (hosted checkout or fields). Keep the webhook receipt table and signature check.
 4. Add the transactional outbox worker for events (`OrderPaid`, `OrderReleased`, …) and ERP/WMS adapters once D22/D23 are decided.
 5. Load the factory's real SKU/BOM package through the staged import. Fixture SKUs must never reach production.

@@ -1,5 +1,5 @@
 import { ApiError, type CartView, api } from './api';
-import { getCartId, getDemoAccount, setCartId, setGuestToken } from './storage';
+import { getCartId, getIdentity, setCartId, setGuestToken } from './storage';
 
 /** Load the current account's cart, forgetting a pointer the server no longer recognises. */
 export async function loadCurrentCart(): Promise<CartView | null> {
@@ -21,7 +21,7 @@ async function ensureCart(): Promise<CartView> {
   const existing = await loadCurrentCart();
   if (existing) return existing;
   const cart = await api.createCart();
-  if (cart.guestToken && getDemoAccount() === 'guest') setGuestToken(cart.guestToken);
+  if (cart.guestToken && getIdentity() === 'guest') setGuestToken(cart.guestToken);
   setCartId(cart.id);
   return cart;
 }

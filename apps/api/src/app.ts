@@ -8,6 +8,10 @@ import {
   DESIGN_SCHEMA_VERSION, dollars, TEN_BY_TEN, frontFor, tenByTenLines, designRequestMachine, transition, type DesignRequestState,
 } from '@rta/core';
 import { type Ctx, Router, readBody, send, sendError } from './http';
+import {
+  LoginLimiter, SESSION_COOKIE, SESSION_DAYS, hashPassword, newSessionToken, normalizeEmail, readCookie, sessionCookie, tokenKey,
+  validateCredentials, verifyPassword,
+} from './auth';
 import { type Persistence, StateSync } from './persistence';
 import { type Cart, type DesignRequest, type Order, Store, type User, seedStore } from './store';
 
@@ -19,6 +23,12 @@ export interface AppOptions {
   reservationTtlMs?: number;
   /** Enables POST /api/dev/payments/:orderId. Defaults to on unless NODE_ENV=production. */
   mockPayments?: boolean;
+  /** Accept the development `x-user-id` header. Defaults to on; production turns it off. */
+  demoAuth?: boolean;
+  /** Mark the session cookie Secure (HTTPS deployments). */
+  secureCookies?: boolean;
+  /** Refuse state-changing requests whose Origin is another site (production). */
+  enforceOrigin?: boolean;
   /** Homeowner editing window in days (D02 proposed default: 30). */
   accessDays?: number;
   /**
@@ -50,15 +60,32 @@ export function createApp(opts: AppOptions = {}) {
   const reservationTtlMs = opts.reservationTtlMs ?? 30 * 60_000;
   const mockPayments = opts.mockPayments ?? process.env.NODE_ENV !== 'production';
   const accessDays = opts.accessDays ?? 30;
+  const demoAuth = opts.demoAuth ?? true;
+  const limiter = new LoginLimiter();
   const router = new Router();
 
   // --- identity (development stub; replace with the selected identity provider, D24) ---
-  const principal = (ctx: Ctx): Principal => {
-    const uid = ctx.headers['x-user-id'];
+  /** Signed-in user from the session cookie, if the session is live. */
+  const sessionUser = (ctx: Ctx): User | undefined => {
+    const token = readCookie(ctx.headers.cookie, SESSION_COOKIE);
+    if (!token) return undefined;
+    const s = store.sessions.get(tokenKey(token));
+    if (!s || Date.parse(s.expiresAt) <= now().getTime()) return undefined;
+    return store.users.get(s.userId);
+  };
+  const principal = (ctx: Ctx): Principal & { via: 'session' | 'demo' | null } => {
     const guest = ctx.headers['x-guest-token'];
-    const user = typeof uid === 'string' ? store.users.get(uid) : undefined;
-    if (typeof uid === 'string' && !user) throw new DomainError('unauthorized', 'Unknown user');
-    return { user, guestToken: typeof guest === 'string' ? guest : undefined };
+    const guestToken = typeof guest === 'string' ? guest : undefined;
+    const fromSession = sessionUser(ctx);
+    if (fromSession) return { user: fromSession, guestToken, via: 'session' };
+    const uid = ctx.headers['x-user-id'];
+    if (typeof uid === 'string') {
+      if (!demoAuth) throw new DomainError('unauthorized', 'Demo accounts are disabled. Please sign in.');
+      const user = store.users.get(uid);
+      if (!user) throw new DomainError('unauthorized', 'Unknown user');
+      return { user, guestToken, via: 'demo' };
+    }
+    return { user: undefined, guestToken, via: null };
   };
   const requireUser = (ctx: Ctx): User => {
     const p = principal(ctx);
@@ -181,7 +208,7 @@ export function createApp(opts: AppOptions = {}) {
   };
 
   // --- routes ---
-  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, mockPayments, time: now().toISOString() }));
+  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, mockPayments, demoAuth, time: now().toISOString() }));
 
   router.on('GET', '/api/catalog/skus', (ctx) => {
     const ent = entitlementOf(principal(ctx).user);
@@ -294,6 +321,35 @@ export function createApp(opts: AppOptions = {}) {
   });
 
   /** Attach a guest draft to the signed-in user atomically (spec section 6, step 3; AC06.1). */
+  /**
+   * Move a guest's design and carts to an account in one step (spec section 6, step 3;
+   * AC06.1). Claiming never restarts the editing clock: the account keeps the earlier start.
+   */
+  const attachGuestData = (user: User, guestToken: string | undefined): { projectId?: string; carts: string[] } => {
+    if (!guestToken || !store.guestTokens.has(guestToken)) return { carts: [] };
+    const projectId = store.guestTokens.get(guestToken) || undefined;
+    const project = projectId ? store.projects.get(projectId) : undefined;
+    if (project && project.ownerType === 'guest') {
+      const guestStart = store.accessWindows.get(`guest:${project.id}`);
+      const userStart = store.accessWindows.get(`user:${user.id}`);
+      const start = [guestStart, userStart].filter((x): x is string => !!x).sort()[0];
+      if (start) store.accessWindows.set(`user:${user.id}`, start);
+      store.accessWindows.delete(`guest:${project.id}`);
+      project.ownerType = 'user';
+      project.ownerId = user.id;
+      audit(user.id, 'project.claim', project.id);
+    }
+    const carts: string[] = [];
+    for (const cart of store.carts.values()) {
+      if (cart.ownerId === `guest:${guestToken}`) {
+        cart.ownerId = user.id;
+        carts.push(cart.id);
+      }
+    }
+    store.guestTokens.delete(guestToken);
+    return { projectId: project?.ownerId === user.id ? project.id : undefined, carts };
+  };
+
   router.on('POST', '/api/projects/:id/claim', (ctx) => {
     const p = principal(ctx);
     const user = requireUser(ctx);
@@ -301,17 +357,105 @@ export function createApp(opts: AppOptions = {}) {
     if (!project || project.ownerType !== 'guest' || !p.guestToken || store.guestTokens.get(p.guestToken) !== project.id) {
       throw new DomainError('not_found', 'Project not found');
     }
-    // Claiming never restarts the clock: the account keeps the earlier of the two starts.
-    const guestStart = store.accessWindows.get(`guest:${project.id}`);
-    const userStart = store.accessWindows.get(`user:${user.id}`);
-    const start = [guestStart, userStart].filter((x): x is string => !!x).sort()[0];
-    if (start) store.accessWindows.set(`user:${user.id}`, start);
-    store.accessWindows.delete(`guest:${project.id}`);
-    project.ownerType = 'user';
-    project.ownerId = user.id;
-    store.guestTokens.delete(p.guestToken);
-    audit(user.id, 'project.claim', project.id);
+    attachGuestData(user, p.guestToken);
     return { id: project.id, ownerType: project.ownerType, latestRevision: project.revisions.at(-1)!.number };
+  });
+
+  // --- accounts and sessions ---
+  const startSession = (ctx: Ctx, user: User) => {
+    const token = newSessionToken();
+    const created = now();
+    store.sessions.set(tokenKey(token), {
+      userId: user.id, createdAt: created.toISOString(), expiresAt: new Date(created.getTime() + SESSION_DAYS * 86_400_000).toISOString(),
+    });
+    ctx.res.setHeader('set-cookie', sessionCookie(token, { secure: !!opts.secureCookies, maxAgeSeconds: SESSION_DAYS * 86_400 }));
+  };
+  const publicUser = (u: User) => ({ id: u.id, name: u.name, email: u.email, roles: u.roles, orgIds: u.orgIds });
+
+  /**
+   * Create an account. Pros get their own organization; trade pricing still needs a
+   * paid membership and directory listing still needs verification (spec section 16).
+   */
+  router.on('POST', '/api/auth/register', (ctx) => {
+    const b = ctx.body as { name?: string; email?: string; password?: string; accountType?: string; businessName?: string; acceptTerms?: boolean };
+    const email = normalizeEmail(String(b.email ?? ''));
+    const password = String(b.password ?? '');
+    const name = String(b.name ?? '').trim();
+    const fields: Record<string, string> = {};
+    if (!name || name.length > 120) fields.name = 'Enter your name';
+    if (b.accountType !== 'homeowner' && b.accountType !== 'pro') fields.accountType = 'Choose an account type';
+    if (b.accountType === 'pro' && !String(b.businessName ?? '').trim()) fields.businessName = 'Enter your business name';
+    if (b.acceptTerms !== true) fields.acceptTerms = 'Please accept the terms and privacy policy';
+    try {
+      validateCredentials(email, password);
+    } catch (e) {
+      Object.assign(fields, (e as DomainError).details.fields as Record<string, string>);
+    }
+    if (Object.keys(fields).length) throw new DomainError('validation', 'Please fix the highlighted fields', { fields });
+    if ([...store.users.values()].some((u) => normalizeEmail(u.email) === email)) {
+      throw new DomainError('conflict', 'An account with this email already exists. Sign in instead.', { fields: { email: 'Already registered' } });
+    }
+    const id = store.id('usr');
+    const orgIds: string[] = [];
+    if (b.accountType === 'pro') {
+      const orgId = store.id('org');
+      orgIds.push(orgId);
+      store.pros.push({ orgId, displayName: String(b.businessName).trim(), services: [], serviceZips: [], verified: false, activeEntitlement: false, capacity: 0, openLeads: 0 });
+    }
+    const user: User = {
+      id, name, email, orgIds, roles: [b.accountType === 'pro' ? 'pro_owner' : 'homeowner'], passwordHash: hashPassword(password), createdAt: now().toISOString(),
+    };
+    store.users.set(id, user);
+    audit(id, 'user.register', id, b.accountType);
+    const attached = attachGuestData(user, principal(ctx).guestToken);
+    startSession(ctx, user);
+    ctx.res.statusCode = 201;
+    return { user: publicUser(user), attached };
+  });
+
+  router.on('POST', '/api/auth/login', (ctx) => {
+    const b = ctx.body as { email?: string; password?: string };
+    const email = normalizeEmail(String(b.email ?? ''));
+    limiter.check(email, now().getTime());
+    const user = [...store.users.values()].find((u) => normalizeEmail(u.email) === email);
+    if (!verifyPassword(String(b.password ?? ''), user?.passwordHash) || !user) {
+      limiter.fail(email, now().getTime());
+      throw new DomainError('unauthorized', 'Email or password is incorrect');
+    }
+    limiter.reset(email);
+    const attached = attachGuestData(user, principal(ctx).guestToken);
+    startSession(ctx, user);
+    audit(user.id, 'user.login', user.id);
+    return { user: publicUser(user), attached };
+  });
+
+  router.on('POST', '/api/auth/logout', (ctx) => {
+    const token = readCookie(ctx.headers.cookie, SESSION_COOKIE);
+    if (token) store.sessions.delete(tokenKey(token));
+    ctx.res.setHeader('set-cookie', sessionCookie('', { secure: !!opts.secureCookies, maxAgeSeconds: 0 }));
+    return { signedOut: true };
+  });
+
+  /** Staff access is granted by an administrator, never self-selected (spec section 3). */
+  const STAFF_ROLES = ['internal_designer', 'factory_planner', 'admin'] as const;
+  router.on('POST', '/api/admin/users/roles', (ctx) => {
+    const admin = requireRole(ctx, 'admin');
+    const b = ctx.body as { email?: string; grant?: string[]; revoke?: string[] };
+    const target = [...store.users.values()].find((u) => normalizeEmail(u.email) === normalizeEmail(String(b.email ?? '')));
+    if (!target) throw new DomainError('not_found', 'No account with that email');
+    const grant = (b.grant ?? []).filter((r): r is (typeof STAFF_ROLES)[number] => (STAFF_ROLES as readonly string[]).includes(r));
+    const revoke = (b.revoke ?? []).filter((r) => (STAFF_ROLES as readonly string[]).includes(r));
+    if (target.id === admin.id && revoke.includes('admin')) throw new DomainError('validation', 'You cannot remove your own admin access');
+    target.roles = [...new Set([...target.roles.filter((r) => !revoke.includes(r)), ...grant])];
+    // Revoking staff access ends that person's sessions (AC03.4).
+    if (revoke.length) for (const [k, s] of store.sessions) if (s.userId === target.id) store.sessions.delete(k);
+    audit(admin.id, 'user.roles', target.id, `grant=${grant.join(',')} revoke=${revoke.join(',')}`);
+    return { user: publicUser(target) };
+  });
+
+  router.on('GET', '/api/admin/users', (ctx) => {
+    requireRole(ctx, 'admin');
+    return { users: [...store.users.values()].filter((u) => u.passwordHash).map(publicUser).sort((a, b) => a.email.localeCompare(b.email)) };
   });
 
   router.on('GET', '/api/projects/:id/revisions/:n/validate', (ctx) => {
@@ -734,8 +878,9 @@ export function createApp(opts: AppOptions = {}) {
   });
 
   router.on('GET', '/api/me', (ctx) => {
-    const user = principal(ctx).user;
-    return { user: user ? { id: user.id, name: user.name, roles: user.roles, orgIds: user.orgIds } : null, entitlement: entitlementOf(user) };
+    const p = principal(ctx);
+    const user = p.user;
+    return { user: user ? publicUser(user) : null, via: p.via, demoAuth, entitlement: entitlementOf(user) };
   });
 
   router.on('GET', '/api/config/quote-honor', () => ({ policy: 'reprice_with_acceptance', description: 'Unlocked quotes are repriced at checkout and any change needs customer acceptance.' }));
@@ -753,6 +898,14 @@ export function createApp(opts: AppOptions = {}) {
 
   async function handle(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) {
     const mutating = req.method !== 'GET' && req.method !== 'HEAD';
+    // Cookie sessions + SameSite=Lax already block most cross-site writes; this closes the rest.
+    if (opts.enforceOrigin && mutating && typeof req.headers.origin === 'string' && !req.url?.startsWith('/api/webhooks/')) {
+      let sameSite = false;
+      try {
+        sameSite = new URL(req.headers.origin).host === req.headers.host;
+      } catch { /* malformed origin */ }
+      if (!sameSite) return send(res, 403, { error: { code: 'forbidden', message: 'Cross-site request refused' } });
+    }
     const work = async () => {
       let outcome: { ok: true; result: unknown } | { ok: false; error: unknown };
       try {
@@ -790,5 +943,10 @@ export function createApp(opts: AppOptions = {}) {
     return mutating && sync ? exclusive(work) : work();
   }
 
-  return { store, handle, server: (): Server => createServer(handle) };
+  /** Save any changes made outside a request (startup tasks). */
+  const persist = async () => {
+    if (sync) await exclusive(() => sync.flush(store.rows()));
+  };
+
+  return { store, handle, persist, server: (): Server => createServer(handle) };
 }

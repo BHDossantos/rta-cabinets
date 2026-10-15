@@ -8,19 +8,95 @@ import { type DemoAccount, setProjectId } from '../storage';
 type Load<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; data: T };
 
 /** Customer dashboard (spec section 4): saved designs, orders and design requests in one place. */
-export function AccountPage({ account }: { account: DemoAccount }) {
+export function AccountPage({ account, roles }: { account: DemoAccount; roles: string[] }) {
   if (account === 'guest') {
     return (
       <div className="container page">
         <h1>Your account</h1>
         <Notice tone="info" title="Sign in to see your projects and orders">
-          Choose a demo account in the header. Guest designs stay in this browser only; download your plan before leaving.
+          <a href="#/signin">Sign in or create an account</a>. Guest designs stay in this browser only; download your plan before leaving.
         </Notice>
       </div>
     );
   }
-  if (account === 'u_designer') return <DesignQueue />;
-  return <CustomerDashboard />;
+  const staff = roles.includes('internal_designer') || roles.includes('admin');
+  return (
+    <>
+      {staff ? <DesignQueue /> : <CustomerDashboard />}
+      {roles.includes('admin') && <StaffAccess />}
+    </>
+  );
+}
+
+const STAFF_ROLE_LABEL: Record<string, string> = { internal_designer: 'Designer', factory_planner: 'Factory planner', admin: 'Administrator' };
+
+/** Admin-only: grant or remove staff roles for registered accounts (spec section 3). */
+function StaffAccess() {
+  const [users, setUsers] = useState<Load<{ id: string; name: string; email: string; roles: string[] }[]>>({ status: 'loading' });
+  const [attempt, setAttempt] = useState(0);
+  const [email, setEmail] = useState('');
+  const [role, setRole] = useState('internal_designer');
+  const [msg, setMsg] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    api.adminUsers().then((r) => setUsers({ status: 'ready', data: r.users })).catch((e) => setUsers({ status: 'error', message: errorMessage(e) }));
+  }, [attempt]);
+
+  const change = async (targetEmail: string, grant: string[], revoke: string[]) => {
+    setMsg(null);
+    try {
+      const r = await api.adminRoles(targetEmail, grant, revoke);
+      setMsg({ tone: 'success', text: `${r.user.email} now has: ${r.user.roles.join(', ')}` });
+      setAttempt((a) => a + 1);
+    } catch (e) {
+      setMsg({ tone: 'error', text: errorMessage(e) });
+    }
+  };
+
+  return (
+    <div className="container page">
+      <section className="card" aria-labelledby="staff-h">
+        <h2 id="staff-h" className="h3">Staff access</h2>
+        <p className="small muted">The person must create an account first. Removing a role signs them out everywhere.</p>
+        <form className="filters" onSubmit={(e: FormEvent) => { e.preventDefault(); if (email.trim()) void change(email.trim(), [role], []); }}>
+          <div className="field">
+            <label htmlFor="sa-email">Account email</label>
+            <input id="sa-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="field">
+            <label htmlFor="sa-role">Role</label>
+            <select id="sa-role" value={role} onChange={(e) => setRole(e.target.value)}>
+              {Object.entries(STAFF_ROLE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <button type="submit" className="btn btn-primary">Grant role</button>
+        </form>
+        {msg && <Notice tone={msg.tone} title={msg.tone === 'success' ? 'Saved' : 'Could not change roles'}>{msg.text}</Notice>}
+        {users.status === 'error' && <ErrorState message={users.message} />}
+        {users.status === 'ready' && (
+          <div className="table-wrap">
+            <table className="table compact">
+              <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th><span className="visually-hidden">Actions</span></th></tr></thead>
+              <tbody>
+                {users.data.map((u) => (
+                  <tr key={u.id}>
+                    <th scope="row">{u.name}</th>
+                    <td>{u.email}</td>
+                    <td>{u.roles.map((r) => STAFF_ROLE_LABEL[r] ?? r.replace('_', ' ')).join(', ')}</td>
+                    <td className="btn-row">
+                      {u.roles.filter((r) => STAFF_ROLE_LABEL[r]).map((r) => (
+                        <button key={r} type="button" className="btn btn-ghost btn-sm" onClick={() => void change(u.email, [], [r])}>Remove {STAFF_ROLE_LABEL[r]}</button>
+                      ))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </div>
+  );
 }
 
 function CustomerDashboard() {

@@ -19,9 +19,10 @@ Maps the handoff's acceptance criteria (AC) and QA scenarios to code and automat
 | AC03.1 Object-ID editing never reveals other accounts | Covered (API) | `apps/api/test/api.test.ts` › access control. The API returns 404, not 403. |
 | AC03.2 Expired membership changes trade pricing, keeps history | Covered (core) | `operations.test.ts` › memberships |
 | AC03.3 Factory user sees no financing data | Partial | Financing data is never attached to orders. Role views are not built yet. |
-| AC03.4 Removed staff lose access | Not started | `organization_member.revoked_at` exists in the schema |
+| AC03.4 Removed staff lose access | Partial | Removing a staff role ends all of that person's sessions (`auth.test.ts`). Organization team removal is still to do. |
 | AC06.1 Guest registers and resumes the identical design | Covered | `api.test.ts` › guest design |
-| AC06.2 Failed registration keeps the draft | Partial | The guest token persists until the claim succeeds |
+| AC06.2 Failed registration keeps the draft | Covered | The guest token persists until registration succeeds; a failed sign-up changes nothing (`auth.test.ts`) |
+| Accounts (spec 6, 25) | Covered | Email/password sign-up and sign-in, scrypt hashes, HttpOnly SameSite session cookie, login lockout, same-site write check, guest design and cart carried into the account, admin-granted staff roles (`auth.test.ts`). Email verification and password reset need an email provider. |
 | AC06.3 Concurrent edits give a recoverable conflict | Covered | `operations.test.ts`, `api.test.ts` › project saves |
 | AC06.4 Expired access blocks edits at the API | Covered | `api.test.ts` › isolated app scenarios. Saves and new projects return 403 `access_expired`; viewing and orders continue. |
 | AC08.1 Unit round-trip within tolerance | Covered | `units.test.ts` |

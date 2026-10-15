@@ -47,7 +47,7 @@ export class Router {
 
 const STATUS: Record<ErrorCode, number> = {
   validation: 422, conflict: 409, not_found: 404, forbidden: 403, unauthorized: 401, invalid_transition: 409,
-  insufficient_stock: 409, idempotency_conflict: 422, entitlement_required: 403, gate_failed: 409, provider_unavailable: 503,
+  insufficient_stock: 409, idempotency_conflict: 422, entitlement_required: 403, gate_failed: 409, provider_unavailable: 503, rate_limited: 429,
 };
 
 export function send(res: ServerResponse, status: number, body: unknown): void {

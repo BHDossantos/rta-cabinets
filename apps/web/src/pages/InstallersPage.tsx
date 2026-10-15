@@ -96,8 +96,8 @@ export function InstallersPage({ account }: { account: DemoAccount }) {
 
           {account === 'guest' ? (
             <Notice tone="info" title="Sign in required to request a quote">
-              Requests share your name and email with the installers you choose, so you need an account. In this development build, choose
-              a demo account in the header.
+              Requests share your name and email with the installers you choose, so you need an account.{' '}
+              <a href="#/signin">Sign in or create an account</a>.
             </Notice>
           ) : (
             <>

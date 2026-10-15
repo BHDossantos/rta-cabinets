@@ -26,7 +26,9 @@ DATABASE_URL=postgres://user:pass@localhost:5432/rta npm run dev:api
 
 Run one API instance per database; a second instance is refused at startup. Database tests run when `TEST_DATABASE_URL` points at a server where the test user can create databases (CI provides one).
 
-Demo users (a development stub, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_designer` (staff designer queue), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
+**Accounts.** Customers and Pros create accounts with email and password. Sessions use an HttpOnly cookie, and passwords are hashed with scrypt. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` once to create the first administrator, who grants staff roles (designer, factory planner, admin) from the Account page. In production the demo accounts below are off; set `ALLOW_DEMO_ACCOUNTS=true` only for a throwaway demo.
+
+Demo users (development only, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_designer` (staff designer queue), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
 
 No payment provider is connected yet. In development, the order page has **Simulate successful / declined payment** buttons. They send the server a simulated provider notification for the order's server-side total, and they are disabled when `NODE_ENV=production`.
 
@@ -44,7 +46,7 @@ NODE_ENV=production DATABASE_URL=postgres://… npm start -w @rta/api   # http:/
 - **Render (simplest):** in Render choose *New → Blueprint* and pick this repository. `render.yaml` creates the web service and a PostgreSQL 16 database, and redeploys on every push to `main`.
 - **Any container host** (Fly.io, Railway, Cloud Run, AWS): use the `Dockerfile`. It listens on `PORT` (default 8080), with the health check at `/api/health`. Set `DATABASE_URL`, plus `ENABLE_TEST_PAYMENTS=true` for a demo.
 
-**Before real customers:** the demo account switcher and test payments must be replaced by real sign-in and a real payment provider, and the synthetic catalog and prices by the factory's data.
+**Before real customers:** connect a real payment provider in place of test payments, an email provider for account verification and password reset, and replace the synthetic catalog and prices with the factory's data.
 
 ## Layout
 

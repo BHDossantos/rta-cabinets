@@ -52,7 +52,7 @@ export function FinancingPage({ account }: { account: DemoAccount }) {
 
       {account === 'guest' ? (
         <Notice tone="info" title="Sign in required">
-          A referral is linked to your account so we can record your consent. In this development build, choose a demo account in the header.
+          A referral is linked to your account so we can record your consent. <a href="#/signin">Sign in or create an account</a> to continue.
         </Notice>
       ) : state.status === 'done' ? (
         <Notice tone="success" title="Submitted for contact — not a credit approval">

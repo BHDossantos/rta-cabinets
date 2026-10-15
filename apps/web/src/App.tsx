@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { type MeView, api } from './api';
+import { Loading } from './components/States';
+import { SignInPage } from './pages/SignInPage';
 import { Header } from './components/Header';
 import { AccountPage } from './pages/AccountPage';
 import { CartPage } from './pages/CartPage';
@@ -14,17 +17,47 @@ import { PlannerPage } from './pages/PlannerPage';
 import { ProPage } from './pages/ProPage';
 import { ShopPage } from './pages/ShopPage';
 import { useHashRoute } from './router';
-import { type DemoAccount, getDemoAccount, setDemoAccount } from './storage';
+import { type DemoAccount, type DemoId, getDemoAccount, setDemoAccount, setIdentity } from './storage';
 
 export function App() {
   const route = useHashRoute();
-  const [account, setAccount] = useState<DemoAccount>(() => getDemoAccount());
+  const [account, setAccount] = useState<DemoAccount | null>(null);
+  const [me, setMe] = useState<MeView | null>(null);
   const section = route[0] ?? '';
 
-  const changeAccount = (a: DemoAccount) => {
+  /**
+   * Ask the server who this is: a signed-in session wins; otherwise a demo account
+   * if the server allows them (development); otherwise a guest.
+   */
+  const refreshIdentity = useCallback(async () => {
+    setIdentity('guest');
+    let first: MeView;
+    try {
+      first = await api.me();
+    } catch {
+      first = { user: null, via: null, demoAuth: false, entitlement: { tradePricing: false, proOnlySkus: false, leadAccess: false } };
+    }
+    let next: DemoAccount = 'guest';
+    let view = first;
+    if (first.via === 'session' && first.user) next = `user:${first.user.id}`;
+    else if (first.demoAuth && getDemoAccount() !== 'guest') {
+      next = getDemoAccount();
+      setIdentity(next);
+      view = await api.me().catch(() => first);
+    }
+    setIdentity(next);
+    setMe(view);
+    setAccount(next);
+  }, []);
+
+  useEffect(() => { void refreshIdentity(); }, [refreshIdentity]);
+
+  const changeAccount = (a: DemoId) => {
     setDemoAccount(a);
-    setAccount(a);
+    void refreshIdentity();
   };
+
+  if (!account || !me) return <div className="container page"><Loading label="Loading…" /></div>;
 
   let page;
   switch (section) {
@@ -62,7 +95,10 @@ export function App() {
       page = <MeasurePage />;
       break;
     case 'account':
-      page = <AccountPage account={account} />;
+      page = <AccountPage account={account} roles={me.user?.roles ?? []} />;
+      break;
+    case 'signin':
+      page = <SignInPage account={account} onSignedIn={refreshIdentity} />;
       break;
     case 'pro':
       page = <ProPage account={account} />;
@@ -91,7 +127,8 @@ export function App() {
       >
         Skip to content
       </a>
-      <Header current={section} account={account} onAccountChange={changeAccount} />
+      <Header current={section} account={account} me={me} onAccountChange={changeAccount}
+        onSignOut={async () => { await api.logout().catch(() => undefined); await refreshIdentity(); window.location.hash = '#/'; }} />
       {/* Remount the page when the demo account changes so data is reloaded for that identity. */}
       <main id="main" tabIndex={-1} key={`${account}:${section}`}>
         {page}

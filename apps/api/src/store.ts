@@ -15,7 +15,19 @@ export interface User {
   name: string;
   email: string;
   orgIds: string[];
-  roles: ('homeowner' | 'pro_owner' | 'pro_staff' | 'internal_designer' | 'factory_planner' | 'admin')[];
+  roles: Role[];
+  /** scrypt hash; absent for demo accounts, which cannot sign in with a password. */
+  passwordHash?: string;
+  createdAt?: string;
+}
+
+export type Role = 'homeowner' | 'pro_owner' | 'pro_staff' | 'internal_designer' | 'factory_planner' | 'admin';
+
+/** Server-side session, keyed by the SHA-256 of the cookie token (the token itself is never stored). */
+export interface Session {
+  userId: string;
+  createdAt: string;
+  expiresAt: string;
 }
 
 export interface Cart {
@@ -109,6 +121,7 @@ export class Store {
   leads = new Map<string, Lead>();
   referrals = new Map<string, FinancingReferral>();
   designRequests = new Map<string, DesignRequest>();
+  sessions = new Map<string, Session>();
   /** Homeowner editing-window start per account ('user:<id>' or 'guest:<projectId>'), D02. */
   accessWindows = new Map<string, string>();
   inventory = new InventoryLedger();
@@ -140,6 +153,7 @@ export class Store {
     add('lead', this.leads);
     add('referral', this.referrals);
     add('design_request', this.designRequests);
+    add('session', this.sessions);
     add('guest_token', this.guestTokens);
     add('access_window', this.accessWindows);
     add('pro', this.pros.map((p) => [p.orgId, p] as [string, ProProfile]));
@@ -165,6 +179,7 @@ export class Store {
     s.leads = new Map(of<Lead>('lead').map((r) => [r.id, r.data]));
     s.referrals = new Map(of<FinancingReferral>('referral').map((r) => [r.id, r.data]));
     s.designRequests = new Map(of<DesignRequest>('design_request').map((r) => [r.id, r.data]));
+    s.sessions = new Map(of<Session>('session').map((r) => [r.id, r.data]));
     s.guestTokens = new Map(of<string>('guest_token').map((r) => [r.id, r.data]));
     s.accessWindows = new Map(of<string>('access_window').map((r) => [r.id, r.data]));
     s.pros = of<ProProfile>('pro').map((r) => r.data);
@@ -182,7 +197,7 @@ export class Store {
 
 export type EntityKind =
   | 'meta' | 'user' | 'project' | 'cart' | 'order' | 'subscription' | 'lead' | 'referral' | 'guest_token' | 'access_window'
-  | 'pro' | 'stock_position' | 'reservation' | 'idempotency' | 'webhook' | 'audit' | 'design_request';
+  | 'pro' | 'stock_position' | 'reservation' | 'idempotency' | 'webhook' | 'audit' | 'design_request' | 'session';
 
 export interface EntityRow {
   kind: EntityKind;

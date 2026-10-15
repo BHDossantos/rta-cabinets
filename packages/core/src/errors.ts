@@ -10,7 +10,8 @@ export type ErrorCode =
   | 'idempotency_conflict'
   | 'entitlement_required'
   | 'gate_failed'
-  | 'provider_unavailable';
+  | 'provider_unavailable'
+  | 'rate_limited';
 
 export class DomainError extends Error {
   constructor(
