@@ -21,9 +21,9 @@ export interface AppOptions {
   /** Shared secret for the mock payment provider's signed webhooks. */
   webhookSecret?: string;
   reservationTtlMs?: number;
-  /** Enables POST /api/dev/payments/:orderId. Defaults to on unless NODE_ENV=production. */
+  /** Enables demo commerce outside production. Production always disables it. */
   mockPayments?: boolean;
-  /** Accept the development `x-user-id` header. Defaults to on; production turns it off. */
+  /** Accept the development `x-user-id` header outside production only. */
   demoAuth?: boolean;
   /** Mark the session cookie Secure (HTTPS deployments). */
   secureCookies?: boolean;
@@ -58,13 +58,21 @@ export function createApp(opts: AppOptions = {}) {
   const now = opts.now ?? (() => new Date());
   const secret = opts.webhookSecret ?? process.env.MOCKPAY_WEBHOOK_SECRET ?? 'dev-only-secret';
   const reservationTtlMs = opts.reservationTtlMs ?? 30 * 60_000;
-  const mockPayments = opts.mockPayments ?? process.env.NODE_ENV !== 'production';
+  const production = process.env.NODE_ENV === 'production';
+  // No real catalog/tax/freight/payment adapter exists yet. Neither an option
+  // nor a legacy demo environment flag can enable synthetic commerce in production.
+  const mockPayments = !production && (opts.mockPayments ?? true);
   const accessDays = opts.accessDays ?? 30;
-  const demoAuth = opts.demoAuth ?? true;
+  const demoAuth = !production && (opts.demoAuth ?? true);
   const limiter = new LoginLimiter();
   const router = new Router();
 
-  // --- identity (development stub; replace with the selected identity provider, D24) ---
+  const requireDemoCommerce = () => {
+    if (!mockPayments) throw new DomainError('provider_unavailable',
+      'Online ordering is not available. Saved designs and estimates remain available; contact us for a confirmed quote.');
+  };
+
+  // --- identity (sessions, with an isolated development account shortcut) ---
   /** Signed-in user from the session cookie, if the session is live. */
   const sessionUser = (ctx: Ctx): User | undefined => {
     const token = readCookie(ctx.headers.cookie, SESSION_COOKIE);
@@ -208,7 +216,7 @@ export function createApp(opts: AppOptions = {}) {
   };
 
   // --- routes ---
-  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, mockPayments, demoAuth, time: now().toISOString() }));
+  router.on('GET', '/api/health', () => ({ ok: true, catalogVersion: store.catalog.version, mockPayments, checkoutEnabled: mockPayments, demoAuth, time: now().toISOString() }));
 
   router.on('GET', '/api/catalog/skus', (ctx) => {
     const ent = entitlementOf(principal(ctx).user);
@@ -541,6 +549,7 @@ export function createApp(opts: AppOptions = {}) {
    * reserves stock atomically and creates one order per idempotency key (QA07).
    */
   router.on('POST', '/api/checkout-sessions', (ctx) => {
+    requireDemoCommerce(); // Before any reservation, order or idempotency mutation.
     const key = ctx.headers['idempotency-key'];
     assert(typeof key === 'string' && key.length >= 8, 'validation', 'Idempotency-Key header (min 8 chars) is required');
     const body = ctx.body as { cartId?: string; acceptedTotalCents?: number; shippingZip?: string; acknowledgeDivergence?: boolean; acknowledgeIncomplete?: boolean };
@@ -595,6 +604,7 @@ export function createApp(opts: AppOptions = {}) {
    * events are no-ops; success after reservation expiry goes to reconciliation (QA08).
    */
   router.on('POST', '/api/webhooks/mockpay', (ctx) => {
+    if (!mockPayments) throw new DomainError('not_found', 'Route not found');
     const sig = String(ctx.headers['x-mockpay-signature'] ?? '');
     const expected = signWebhook(secret, ctx.rawBody);
     if (sig.length !== expected.length || !timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) {
@@ -646,6 +656,7 @@ export function createApp(opts: AppOptions = {}) {
 
   /** Manufacturing release enforces commercial, design and factory gates; idempotent per order. */
   router.on('POST', '/api/orders/:id/release', (ctx) => {
+    requireDemoCommerce(); // Historical simulated payment is not production settlement.
     const user = requireRole(ctx, 'factory_planner');
     const order = loadOrder(ctx, ctx.params.id!, true);
     if (order.manufacturingState === 'released') return { id: order.id, manufacturingState: order.manufacturingState, replayed: true };
