@@ -175,6 +175,13 @@ function CartDetail({ cart, account, onChange }: { cart: CartView; account: Demo
 
 function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAccount; disabled: boolean }) {
   const [acceptedTotal, setAcceptedTotal] = useState(cart.quote.total.amount);
+  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  useEffect(() => {
+    let active = true;
+    api.health().then((h) => { if (active) setCheckoutEnabled(h.checkoutEnabled === true); })
+      .catch(() => { if (active) setCheckoutEnabled(false); });
+    return () => { active = false; };
+  }, []);
   const [ackIncomplete, setAckIncomplete] = useState(false);
   const [ackDivergence, setAckDivergence] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -186,6 +193,7 @@ function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAc
   useEffect(() => { setAcceptedTotal(cart.quote.total.amount); setProblem(null); }, [cart]);
 
   const submit = async (total = acceptedTotal) => {
+    if (!checkoutEnabled) return;
     const body = {
       cartId: cart.id, acceptedTotalCents: total,
       ...(ackIncomplete ? { acknowledgeIncomplete: true } : {}),
@@ -223,9 +231,12 @@ function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAc
   return (
     <section className="card checkout" aria-labelledby="checkout-h">
       <h2 id="checkout-h">Checkout</h2>
+      {!checkoutEnabled && <Notice tone="warning" title="Online ordering unavailable">
+        Keep your saved design and estimate, and contact us for a confirmed quote. No payment is being taken.
+      </Notice>}
       <p>
-        The server re-prices your cart, confirms freight, tax and stock, and creates one order per attempt. Payment is taken on the
-        payment provider's hosted page; we never see your card number.
+        Prices, tax and freight in this preview are estimates using sample data. Any enabled checkout is simulated;
+        no card is charged and no real order is placed.
       </p>
       {account === 'guest' && <p className="small">Checking out as a guest. Create an account to keep your design and order history together.</p>}
       {incomplete && (
@@ -246,7 +257,7 @@ function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAc
             </p>
             {problem.quote && <details><summary>See the updated quote</summary><QuoteSummary quote={problem.quote} caption="Checkout quote" /></details>}
             <div className="btn-row">
-              <button type="button" className="btn btn-primary" disabled={submitting} onClick={() => { setAcceptedTotal(problem.totalCents); void submit(problem.totalCents); }}>
+              <button type="button" className="btn btn-primary" disabled={!checkoutEnabled || submitting} onClick={() => { setAcceptedTotal(problem.totalCents); void submit(problem.totalCents); }}>
                 Accept {cents(problem.totalCents)} and place order
               </button>
               <button type="button" className="btn btn-secondary" onClick={() => setProblem(null)}>Not now</button>
@@ -279,7 +290,7 @@ function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAc
         )}
       </div>
 
-      <button type="button" className="btn btn-primary btn-lg" onClick={() => void submit()} disabled={disabled || submitting || (incomplete && !ackIncomplete)}>
+      <button type="button" className="btn btn-primary btn-lg" onClick={() => void submit()} disabled={!checkoutEnabled || disabled || submitting || (incomplete && !ackIncomplete)}>
         {submitting ? 'Placing order…' : 'Place order'}
       </button>
       {disabled && <p className="small">Apply or discard quantity changes before checking out.</p>}

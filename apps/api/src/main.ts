@@ -11,9 +11,9 @@ const port = Number(process.env.PORT ?? 8787);
 const databaseUrl = process.env.DATABASE_URL;
 const webDir = process.env.WEB_DIST_DIR ?? fileURLToPath(new URL('../../web/dist/', import.meta.url));
 const production = process.env.NODE_ENV === 'production';
-/** Test payments and demo accounts stay off in production unless a demo deployment turns them on. */
-const mockPayments = process.env.ENABLE_TEST_PAYMENTS === 'true' || !production;
-const demoAuth = process.env.ALLOW_DEMO_ACCOUNTS === 'true' || !production;
+/** Legacy demo flags can never enable test payments or demo identities in production. */
+const mockPayments = !production && process.env.ENABLE_TEST_PAYMENTS !== 'false';
+const demoAuth = !production && process.env.ALLOW_DEMO_ACCOUNTS !== 'false';
 
 async function start() {
   const persistence = databaseUrl ? await PgPersistence.connect(databaseUrl) : undefined;
