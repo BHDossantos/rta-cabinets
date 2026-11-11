@@ -3,7 +3,9 @@ import { useEffect, useState } from 'react';
 /** Minimal hash router: "#/orders/ord_1" -> ["orders", "ord_1"]. */
 export function parseHash(hash: string): string[] {
   const path = hash.replace(/^#/, '').split('?')[0] ?? '';
-  return path.split('/').filter(Boolean).map((s) => decodeURIComponent(s));
+  return path.split('/').filter(Boolean).map((s) => {
+    try { return decodeURIComponent(s); } catch { return s; }
+  });
 }
 
 export function useHashRoute(): string[] {

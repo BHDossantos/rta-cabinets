@@ -39,10 +39,12 @@ export function QuickOrderPage() {
       return;
     }
     setQuote({ status: 'loading' });
+    let live = true;
     const t = setTimeout(() => {
-      api.quoteLines(valid).then((r) => setQuote({ status: 'ready', data: r.quote })).catch((e) => setQuote({ status: 'error', message: errorMessage(e) }));
+      api.quoteLines(valid).then((r) => { if (live) setQuote({ status: 'ready', data: r.quote }); })
+        .catch((e) => { if (live) setQuote({ status: 'error', message: errorMessage(e) }); });
     }, 400);
-    return () => clearTimeout(t);
+    return () => { live = false; clearTimeout(t); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [validKey]);
 
