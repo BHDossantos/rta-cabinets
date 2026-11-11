@@ -26,11 +26,25 @@ DATABASE_URL=postgres://user:pass@localhost:5432/rta npm run dev:api
 
 Run one API instance per database; a second instance is refused at startup. Database tests run when `TEST_DATABASE_URL` points at a server where the test user can create databases (CI provides one).
 
-**Accounts.** Customers and Pros create accounts with email and password. Sessions use an HttpOnly cookie, and passwords are hashed with scrypt. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` once to create the first administrator, who grants staff roles (designer, factory planner, admin) from the Account page. In production the demo accounts below are off; set `ALLOW_DEMO_ACCOUNTS=true` only for a throwaway demo.
+**Accounts.** Customers and Pros create accounts with email and password. Sessions use an HttpOnly cookie, and passwords are hashed with scrypt. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` once to create the first administrator, who grants staff roles (designer, factory planner, admin) from the Account page. In production the demo accounts below are always off, including when `ALLOW_DEMO_ACCOUNTS=true` is set. Outside production, `ALLOW_DEMO_ACCOUNTS=false` disables them.
 
 Demo users (development only, sent in the `x-user-id` header): `u_home` (homeowner), `u_pro` (Pro with trade pricing), `u_designer` (staff designer queue), `u_factory` (factory planner), `u_admin`. Guests get an `x-guest-token` when they create a project.
 
-No payment provider is connected yet. In development, the order page has **Simulate successful / declined payment** buttons. They send the server a simulated provider notification for the order's server-side total, and they are disabled when `NODE_ENV=production`.
+No payment provider is connected yet. In development, the order page has **Simulate successful / declined payment** buttons. They send the server a simulated provider notification for the order's server-side total.
+
+With `NODE_ENV=production`, **checkout, mock payment completion and manufacturing
+release are unavailable**. Neither `ENABLE_TEST_PAYMENTS=true` nor app construction
+options can bypass this gate. The signed mock webhook returns 404, just like the
+development payment endpoint; a valid mock signature is not proof of real payment.
+Checkout and release return 503 before order, inventory or idempotency state changes.
+Previously stored demo orders cannot be settled or released in production. Customer
+signup/sign-in, saved designs, estimates and cart editing remain available. The
+checkout UI disables ordering when the server does not explicitly enable it and
+makes clear that sample totals are not real prices.
+
+Outside production, `ENABLE_TEST_PAYMENTS=false` disables all demo commerce;
+otherwise demo checkout and simulated payment remain available for isolated tests.
+Do not run a public service as development merely to regain the simulation buttons.
 
 Features follow what leading cabinet manufacturer and RTA sites do well; see [`docs/competitive-research.md`](docs/competitive-research.md) for the 20 sites reviewed and what was adopted.
 
@@ -44,9 +58,23 @@ NODE_ENV=production DATABASE_URL=postgres://… npm start -w @rta/api   # http:/
 ```
 
 - **Render (simplest):** in Render choose *New → Blueprint* and pick this repository. `render.yaml` creates the web service and a PostgreSQL 16 database, and redeploys on every push to `main`.
-- **Any container host** (Fly.io, Railway, Cloud Run, AWS): use the `Dockerfile`. It listens on `PORT` (default 8080), with the health check at `/api/health`. Set `DATABASE_URL`, plus `ENABLE_TEST_PAYMENTS=true` for a demo.
+- **Any container host** (Fly.io, Railway, Cloud Run, AWS): use the `Dockerfile`. It listens on `PORT` (default 8080), with the health check at `/api/health`. Set `DATABASE_URL`. Legacy `ENABLE_TEST_PAYMENTS=true` in a production deployment is ignored by the API. The existing Blueprint still contains this legacy value; it no longer enables checkout.
 
-**Before real customers:** connect a real payment provider in place of test payments, an email provider for account verification and password reset, and replace the synthetic catalog and prices with the factory's data.
+**Before accepting real orders:** implement a separate real commerce path with the
+factory-approved catalog and price book, authoritative inventory, tax/freight
+quotes and a real payment provider. Define return/cancellation and custom-order
+policies, reconcile payments/refunds and reservations, and prove them in an
+approved staging environment. The production gate must not be removed just
+because a credential or a new SKU has been supplied: current checkout hardcodes
+synthetic freight and fixture pricing rules. Add an email provider for account
+verification and password reset. Business decisions D01–D04, D13, D16, D23 and D24
+in `docs/decisions.md` remain open; no prices, catalog facts or provider were
+invented by this change.
+
+The backend gate is authoritative and should be released before its UI change.
+An older backend without `checkoutEnabled` is treated as unavailable by the new
+UI. The new backend protects older clients as well. No production setting or
+deployment has been changed by this source-code guard.
 
 ## Layout
 

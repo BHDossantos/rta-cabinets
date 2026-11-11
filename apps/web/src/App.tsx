@@ -129,6 +129,7 @@ export function App() {
       </a>
       <Header current={section} account={account} me={me} onAccountChange={changeAccount}
         onSignOut={async () => { await api.logout().catch(() => undefined); await refreshIdentity(); window.location.hash = '#/'; }} />
+      <aside className="container" aria-label="Demo notice"><p><strong>Demonstration only.</strong> Catalog, prices and policies are sample data. No real orders or payments are accepted.</p></aside>
       {/* Remount the page when the demo account changes so data is reloaded for that identity. */}
       <main id="main" tabIndex={-1} key={`${account}:${section}`}>
         {page}
