@@ -196,7 +196,7 @@ export const api = {
     request<{ orderId: string; totalCents: number; paymentState: string; paymentUrl: string; replayed: boolean }>(
       'POST', '/api/checkout-sessions', body, { 'Idempotency-Key': idempotencyKey }),
 
-  health: () => request<{ ok: boolean; mockPayments: boolean }>('GET', '/api/health'),
+  health: () => request<{ ok: boolean; mockPayments: boolean; checkoutEnabled: boolean }>('GET', '/api/health'),
   /** Development-only test payment; the server sets the amount. */
   testPayment: (orderId: string, outcome: 'succeeded' | 'failed') =>
     request<{ paymentState: string }>('POST', `/api/dev/payments/${encodeURIComponent(orderId)}`, { outcome }),
