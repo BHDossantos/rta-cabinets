@@ -8,7 +8,7 @@ test('phone menu can be closed, reopened, navigated, and revisited', async ({ pa
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Plan, price and order');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your dream kitchen.');
   await fitsPhone(page);
   await page.getByRole('button', { name: 'Menu', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Close menu' })).toHaveAttribute('aria-expanded', 'true');
@@ -19,7 +19,7 @@ test('phone menu can be closed, reopened, navigated, and revisited', async ({ pa
   await expect(page.getByRole('button', { name: 'Menu', exact: true })).toHaveAttribute('aria-expanded', 'false');
   await fitsPhone(page);
   await page.goBack();
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Plan, price and order');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your dream kitchen.');
   await page.goForward();
   await expect(page.getByRole('heading', { name: 'Shop materials' })).toBeVisible();
   expect(errors).toEqual([]);
@@ -51,4 +51,20 @@ test('planner and interrupted account forms remain usable at phone width', async
   await page.getByRole('tab', { name: 'Create account' }).click();
   await expect(page.getByLabel('Your name', { exact: true })).toHaveValue('Mobile test');
   await fitsPhone(page);
+});
+
+
+test('reference storefront fits both viewports and links to the real planner', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your dream kitchen.');
+  await expect(page.getByText('Preview experience.', { exact: false })).toBeVisible();
+  await fitsPhone(page);
+  await page.screenshot({ path: testInfo.outputPath('homepage-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await fitsPhone(page);
+  await page.screenshot({ path: testInfo.outputPath('homepage-desktop.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Open the kitchen planner' }).click();
+  await expect(page.getByRole('heading', { name: 'Design planner' })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Your dream kitchen.');
 });
