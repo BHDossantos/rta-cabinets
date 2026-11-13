@@ -1,0 +1,36 @@
+# Temporary RTA preview. Free Postgres expires after 30 days; no automatic upgrade.
+# Synthetic catalog/pricing only. No real checkout, demo identities, or payments.
+# Set owner credentials securely in Render, not in Git.
+services:
+  - type: web
+    name: rta-cabinets-trial
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: claude/wonderful-knuth-xnuxec
+    autoDeployTrigger: "off"
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: ENABLE_TEST_PAYMENTS
+        value: "false"
+      - key: ALLOW_DEMO_ACCOUNTS
+        value: "false"
+      - key: MOCKPAY_WEBHOOK_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: rta-cabinets-trial-db
+          property: connectionString
+
+databases:
+  - name: rta-cabinets-trial-db
+    plan: free
+    region: frankfurt
+    postgresMajorVersion: "16"
+    ipAllowList: []
