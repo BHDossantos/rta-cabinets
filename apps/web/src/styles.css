@@ -333,9 +333,9 @@ textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px soli
 .site-header { border-top: 9px solid var(--brand-orange); }
 .reference-home { padding-top: 0; }
 .kitchen-hero { position: relative; overflow: hidden; background: #f1ebe2; }
-.kitchen-photo { background-image: url('/images/kitchen-reference.jpg'); background-repeat: no-repeat; background-size: 376.5% 837%; background-position: 10.3% 58.4%; }
-.photo-gray { background-position: 50% 58.4%; }
-.photo-espresso { background-position: 89.7% 58.4%; }
+.kitchen-photo { background-image: url('/images/kitchen-white-original.webp'); background-repeat: no-repeat; background-size: cover; background-position: center; }
+.photo-gray { background-image: url('/images/kitchen-neutral-original.webp'); }
+.photo-espresso { background-image: url('/images/kitchen-espresso-original.webp'); }
 .hero-photo { position: absolute; inset: 0; opacity: .75; }
 .kitchen-hero::after { content: ''; position: absolute; inset: 0; background: linear-gradient(90deg,#fff 0%,rgba(255,255,255,.92) 24%,rgba(255,255,255,.35) 65%,transparent); }
 .kitchen-hero-grid { position: relative; z-index: 1; display: grid; grid-template-columns: 1.2fr 1fr; align-items: center; gap: 64px; padding-top: 76px; padding-bottom: 76px; }
