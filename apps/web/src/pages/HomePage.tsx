@@ -31,7 +31,7 @@ export function HomePage() {
       <div className="grid-3">
         {['Modern white', 'Soft neutral', 'Classic espresso'].map((name, i) => <a className="kitchen-style" href="#/collections" key={name}><div className={`kitchen-photo photo-${['white','gray','espresso'][i]}`} role="img" aria-label={`${name} kitchen inspiration`} /><div className="kitchen-style-caption"><h3>{name}</h3><span>Explore door styles <b aria-hidden="true">↗</b></span></div></a>)}
       </div>
-      <p className="small muted inspiration-note">Inspiration photography, not a representation of the available catalog or a final design.</p><a className="btn btn-primary btn-lg" href="#/collections">View all door styles →</a>
+      <p className="small muted inspiration-note">AI-generated kitchen concepts for inspiration, not photographs of completed projects or a representation of the available catalog.</p><a className="btn btn-primary btn-lg" href="#/collections">View all door styles →</a>
     </section>
     <section className="kitchen-bottom"><div className="container"><h2>Good design starts with the details.</h2><p>Measure carefully, explore your options and build your plan at your own pace.</p><div className="kitchen-resource-links"><a href="#/measure">Measuring guide →</a><a href="#/quick-order">Order by SKU →</a><a href="#/installers">Find an installer →</a><a href="#/financing">Financing information →</a></div></div></section>
   </div>;

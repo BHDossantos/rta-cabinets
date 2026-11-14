@@ -9,3 +9,6 @@ Unverified claims in the mock (25,000 customers, testimonials, Made in USA, 0% f
 Checks: TypeScript passed. Vitest 107 passed, 3 skipped (database tests not configured). Production build passed. Local production server started successfully with test payments and demo accounts OFF. Chromium visual/interaction QA is blocked by the executor's local socket restriction, including after permitted escalation. Desktop/mobile appearance and click-flow QA are NOT yet verified. The source reference was visually inspected.
 
 Publication: implemented on a separate branch from deployed d75dcc75, not the auto-deployed branch. Do not merge/deploy before desktop/mobile visual QA. Existing Render free preview is unchanged.
+
+## Superseded imagery
+The original reference crops described above were replaced on 13 November 2026. See `homepage-image-provenance.md` for current assets and provenance.
