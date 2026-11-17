@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from 'react';
-import { type DesignRequestInput, type DesignRequestView, api, errorMessage } from '../api';
+import { type DesignRequestInput, type DesignRequestView, type MyProject, api, errorMessage } from '../api';
 import { Notice } from '../components/States';
 import { DESIGN_REQUEST_LABEL } from '../format';
 import { type DemoAccount, getProjectId } from '../storage';
@@ -32,8 +32,11 @@ const EMPTY: DesignRequestInput = {
 
 export function DesignServicePage({ account }: { account: DemoAccount }) {
   const [form, setForm] = useState<DesignRequestInput>(EMPTY);
-  const [attachProject, setAttachProject] = useState(true);
-  const projectId = getProjectId();
+  const [projectId, setProjectId] = useState('');
+  const [projects, setProjects] = useState<MyProject[]>([]);
+  const [projectState, setProjectState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [projectError, setProjectError] = useState('');
+  const [projectAttempt, setProjectAttempt] = useState(0);
   const [missing, setMissing] = useState<string[]>([]);
   const [state, setState] = useState<{ busy: boolean; error: string | null; sent: DesignRequestView | null }>({ busy: false, error: null, sent: null });
   const set = <K extends keyof DesignRequestInput>(k: K, v: DesignRequestInput[K]) => setForm((f) => ({ ...f, [k]: v }));
@@ -41,8 +44,37 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
 
   useEffect(() => setMissing([]), [form]);
 
+  useEffect(() => {
+    let live = true;
+    setProjectId('');
+    setProjects([]);
+    setProjectState('loading');
+    if (!signedIn) return;
+    api.myProjects().then(({ projects: saved }) => {
+      if (!live) return;
+      setProjects(saved);
+      const current = saved.find((p) => p.id === getProjectId());
+      setProjectId(current?.id ?? '');
+      if (current) setForm((f) => ({ ...f, roomType: current.roomType }));
+      setProjectState('ready');
+    }).catch((e) => {
+      if (!live) return;
+      setProjectError(errorMessage(e));
+      setProjectState('error');
+    });
+    return () => { live = false; };
+  }, [account, signedIn, projectAttempt]);
+
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const chooseProject = (id: string) => {
+    setProjectId(id);
+    const selected = projects.find((p) => p.id === id);
+    if (selected) setForm((f) => ({ ...f, roomType: selected.roomType }));
+  };
+
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (state.busy || projectState === 'loading' || (projectId && !selectedProject)) return;
     // Show missing requirements before submission (spec 11, request form).
     const m: string[] = [];
     if (!/^\d{5}$/.test(form.zip)) m.push('zip');
@@ -56,7 +88,7 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
     }
     setState({ busy: true, error: null, sent: null });
     try {
-      const sent = await api.createDesignRequest({ ...form, phone: form.phone || undefined, projectId: attachProject && projectId ? projectId : undefined });
+      const sent = await api.createDesignRequest({ ...form, phone: form.phone || undefined, projectId: selectedProject?.id });
       setState({ busy: false, error: null, sent });
     } catch (err) {
       setState({ busy: false, error: errorMessage(err), sent: null });
@@ -97,7 +129,7 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
 
       {state.sent ? (
         <Notice tone="success" title={`Request ${state.sent.id} received`}>
-          <p>Status: {DESIGN_REQUEST_LABEL[state.sent.state] ?? state.sent.state}. You can follow it and reply to the designer from <a href="#/account">your account</a>.</p>
+          <p>{state.sent.projectId && `Attached design: ${state.sent.projectId}, revision ${state.sent.revisionNumber}. `}Status: {DESIGN_REQUEST_LABEL[state.sent.state] ?? state.sent.state}. You can follow it and reply to the designer from <a href="#/account">your account</a>.</p>
         </Notice>
       ) : !signedIn ? (
         <Notice tone="info" title="Sign in to request a design">
@@ -110,12 +142,13 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
           <div className="form-grid">
             <div className="field">
               <label htmlFor="dr-room">Room</label>
-              <select id="dr-room" value={form.roomType} onChange={(e) => set('roomType', e.target.value)}>
+              <select id="dr-room" disabled={Boolean(selectedProject)} value={form.roomType} onChange={(e) => set('roomType', e.target.value)}>
                 <option value="kitchen">Kitchen</option>
                 <option value="bathroom">Bathroom</option>
                 <option value="laundry">Laundry</option>
                 <option value="closet">Closet</option>
                 <option value="other_interior">Other room</option>
+                <option value="exterior">Exterior</option>
               </select>
             </div>
             <div className="field">
@@ -175,12 +208,27 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
             <textarea id="dr-notes" rows={3} value={form.notes} onChange={(e) => set('notes', e.target.value)} />
           </div>
 
-          {projectId && (
-            <label className="check">
-              <input type="checkbox" checked={attachProject} onChange={(e) => setAttachProject(e.target.checked)} />
-              <span>Attach my saved design ({projectId}) so the designer starts from my measurements</span>
-            </label>
-          )}
+          <section aria-labelledby="saved-design-h" className="stack">
+            <h3 id="saved-design-h">Design for human review</h3>
+            <p className="small muted">Choose a saved layout or request help without one. Only saved changes are included; save your latest edits in the planner first. This request does not place an order.</p>
+            {projectState === 'loading' && <p role="status">Loading your saved designs…</p>}
+            {projectState === 'error' && <Notice tone="error" title="Could not load saved designs">
+              <p>{projectError} You can retry or send a request without a saved design.</p>
+              <button type="button" className="btn btn-secondary" onClick={() => setProjectAttempt((n) => n + 1)}>Retry saved designs</button>
+            </Notice>}
+            {projectState === 'ready' && <>
+              <label htmlFor="dr-project">Saved design to attach</label>
+              <select id="dr-project" value={projectId} onChange={(e) => chooseProject(e.target.value)} disabled={state.busy}>
+                <option value="">No saved design — start from my details</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name} · revision {p.latestRevision}</option>)}
+              </select>
+              {projects.length === 0 && <p>No saved designs yet. <a href="#/design">Create a layout in the planner</a> or continue with your room details.</p>}
+              {selectedProject && <div className="small" aria-live="polite">
+                <p>{selectedProject.name}: {selectedProject.roomType.replaceAll('_', ' ')} · {selectedProject.cabinets} cabinets · revision {selectedProject.latestRevision}</p>
+                <p>Last saved: {new Date(selectedProject.updatedAt).toLocaleString()}. The latest saved revision at submission will be attached for the designer to review.</p>
+              </div>}
+            </>}
+          </section>
 
           <fieldset>
             <legend>How should we contact you?</legend>
@@ -199,7 +247,7 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
           </fieldset>
 
           {state.error && <Notice tone="error" title="Could not send the request">{state.error}</Notice>}
-          <button type="submit" className="btn btn-primary" disabled={state.busy}>{state.busy ? 'Sending…' : 'Send design request'}</button>
+          <button type="submit" className="btn btn-primary" disabled={state.busy || projectState === 'loading'}>{state.busy ? 'Sending…' : 'Send design request'}</button>
         </form>
       )}
     </div>
