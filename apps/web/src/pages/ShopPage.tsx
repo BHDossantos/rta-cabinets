@@ -1,3 +1,4 @@
+import { sortCatalog, type CatalogSort } from '../catalogSort';
 import { useEffect, useId, useState } from 'react';
 import { ApiError, type PublicSku, api, errorMessage } from '../api';
 import { addToCart } from '../cartActions';
@@ -23,6 +24,7 @@ const PURCHASABILITY: Record<string, string> = {
 };
 
 export function ShopPage({ account }: { account: DemoAccount }) {
+  const [sort, setSort] = useState<CatalogSort>('default');
   const [q, setQ] = useState('');
   const [kind, setKind] = useState('');
   const [query, setQuery] = useState({ q: '', kind: '' });
@@ -64,6 +66,12 @@ export function ShopPage({ account }: { account: DemoAccount }) {
             {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
           </select>
         </div>
+        <div className="field"><label htmlFor="catalog-sort">Sort products</label>
+          <select id="catalog-sort" value={sort} onChange={e => setSort(e.target.value as CatalogSort)}>
+            <option value="default">Default order</option><option value="name">Name A–Z</option>
+            <option value="price-asc">List price: low to high</option><option value="price-desc">List price: high to low</option>
+          </select>
+        </div>
       </form>
 
       {state.status === 'loading' && <Loading label="Loading products…" />}
@@ -77,7 +85,7 @@ export function ShopPage({ account }: { account: DemoAccount }) {
         <>
           <p className="small muted" aria-live="polite">{state.items.length} product{state.items.length === 1 ? '' : 's'}</p>
           <ul className="product-grid">
-            {state.items.map((s) => (
+            {sortCatalog(state.items, sort).map((s) => (
               <li key={s.code} className="product-card">
                 <div className="product-thumb" aria-hidden="true">{s.code}</div>
                 <h2 className="h4">{s.name}</h2>
