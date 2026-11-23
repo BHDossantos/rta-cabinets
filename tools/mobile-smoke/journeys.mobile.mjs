@@ -91,3 +91,35 @@ test('guest builds a measured kitchen and reaches itemized estimate', async ({ p
   await expect(page.getByText('Review only, not an order')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send design request' })).toHaveCount(0);
 });
+
+test('neutral storefront banner follows shopping routes and opens the measuring guide', async ({ page }) => {
+  const banner = page.getByRole('complementary', { name: 'Project planning' });
+  for (const route of ['/', '/#/shop', '/#/design', '/#/collections', '/#/cart']) {
+    await page.goto(route);
+    await expect(banner).toContainText('Measure first. Build with confidence.');
+    await expect(banner).not.toContainText(/discount|coupon|% off/i);
+    await fitsPhone(page);
+  }
+  const next = banner.getByRole('button', { name: 'Next banner' });
+  const previous = banner.getByRole('button', { name: 'Previous banner' });
+  await next.focus();
+  await next.press('Enter');
+  await expect(next).toBeFocused();
+  await expect(banner.getByRole('link', { name: 'Explore cabinet collections' })).toBeVisible();
+  await expect(banner.getByRole('status')).toContainText('2 of 3');
+  await next.click();
+  await expect(banner.getByRole('link', { name: 'Explore design help' })).toBeVisible();
+  await expect(banner.getByRole('status')).toContainText('3 of 3');
+  await fitsPhone(page);
+  await next.click();
+  await expect(banner.getByRole('status')).toContainText('1 of 3');
+  await previous.click();
+  await expect(banner.getByRole('status')).toContainText('3 of 3');
+  await next.click();
+  await banner.getByRole('link', { name: 'Open measuring guide' }).click();
+  await expect(page).toHaveURL(/#\/measure$/);
+  await expect(banner).toBeVisible();
+  await page.goto('/#/account');
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  await expect(banner).toHaveCount(0);
+});
