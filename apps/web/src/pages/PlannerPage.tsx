@@ -331,6 +331,16 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
     window.print();
   };
 
+  const prepareReview = async () => {
+    setCartState({ busy: true, error: null });
+    const p = await save();
+    if (!p) {
+      setCartState({ busy: false, error: 'Save the design first, or download your plan to keep a local copy.' });
+      return;
+    }
+    navigate('/design-service?review=1');
+  };
+
   const buildCart = async () => {
     setCartState({ busy: true, error: null });
     const p = await save();
@@ -522,12 +532,14 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
               <section className="card" aria-labelledby="est-h">
                 <h2 id="est-h">Step 3: Itemized estimate</h2>
                 <EstimatePanel doc={doc} onSelectObject={(id) => { select(id); setStep('editor'); }} />
-                {cartState.error && <Notice tone="error" title="Could not build cart">{cartState.error}</Notice>}
+                <Notice tone="info" title="Salesperson review before ordering">
+                  A person checks wall clearances, door swings and window interference. Optional hardware, slides and DIY kits are not included without confirmed compatibility and availability. The estimate is not an order and nothing is charged.
+                </Notice>
+                {cartState.error && <Notice tone="error" title="Could not continue">{cartState.error}</Notice>}
                 <div className="btn-row">
                   <button type="button" className="btn btn-secondary" onClick={() => setStep('editor')}>Back to layout</button>
-                  <button type="button" className="btn btn-primary" onClick={() => void buildCart()} disabled={cartState.busy || doc.instances.length === 0}>
-                    {cartState.busy ? 'Building cart…' : 'Build cart from this design'}
-                  </button>
+                  <button type="button" className="btn btn-primary" onClick={() => void prepareReview()} disabled={cartState.busy || doc.instances.length === 0}>Prepare salesperson review</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => void buildCart()} disabled={cartState.busy || doc.instances.length === 0}>Preview cabinet list</button>
                 </div>
               </section>
             )}
