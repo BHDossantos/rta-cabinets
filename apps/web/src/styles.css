@@ -330,7 +330,63 @@ textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px soli
 @media (max-width: 720px) { .account-area { order: 4; width: 100%; margin-left: 0; justify-content: flex-start; } }
 
 /* Reference-inspired storefront. All commerce continues through existing guarded routes. */
-.site-header { border-top: 9px solid var(--brand-orange); }
+/* One shared top strip, visually distinct from both the navigation and the home hero. */
+.storefront-banner {
+  border-top: 4px solid var(--brand-orange);
+  border-bottom: 1px solid #F3D7C6;
+  background: linear-gradient(100deg, #FFF8F2, #FFFFFF 85%);
+}
+.storefront-banner-inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding-block: var(--space-2);
+}
+.storefront-banner-slide {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.storefront-banner-controls { display: flex; align-items: center; gap: var(--space-1); }
+.storefront-banner-controls button {
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 0;
+  border: 1px solid #D6B49D;
+  border-radius: var(--radius);
+  background: var(--white);
+  color: var(--orange-dark);
+  font: 650 24px/1 var(--font);
+  cursor: pointer;
+}
+.storefront-banner-controls button:hover { background: #FFF0E5; }
+.storefront-banner-count { font-size: 13px; white-space: nowrap; color: var(--muted); }
+.storefront-banner-icon { display: block; color: var(--orange-dark); }
+.storefront-banner-copy { display: grid; line-height: 1.35; overflow-wrap: anywhere; }
+.storefront-banner-copy strong { font-size: 15px; }
+.storefront-banner-copy span { font-size: 13px; color: var(--muted); }
+.storefront-banner-link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--touch);
+  border: 1px solid #F3D7C6;
+  border-radius: var(--radius);
+  padding: 0 var(--space-3);
+  background: var(--white);
+  font-size: 14px;
+  font-weight: 650;
+}
+.storefront-banner-link:hover { background: #FFF0E5; }
+@media (max-width: 690px) {
+  .storefront-banner-inner { grid-template-columns: minmax(0, 1fr); }
+  .storefront-banner-slide { grid-template-columns: auto minmax(0, 1fr); }
+  .storefront-banner-link { grid-column: 2; justify-self: start; }
+  .storefront-banner-controls { justify-self: end; }
+}
+@media print { .storefront-banner { display: none !important; } }
 .reference-home { padding-top: 0; }
 .kitchen-hero { position: relative; overflow: hidden; background: #f1ebe2; }
 .kitchen-photo { background-image: url('/images/kitchen-white-original.webp'); background-repeat: no-repeat; background-size: cover; background-position: center; }

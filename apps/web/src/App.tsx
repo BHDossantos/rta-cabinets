@@ -3,6 +3,7 @@ import { type MeView, api } from './api';
 import { Loading } from './components/States';
 import { SignInPage } from './pages/SignInPage';
 import { Header } from './components/Header';
+import { StorefrontBanner } from './components/StorefrontBanner';
 import { AccountPage } from './pages/AccountPage';
 import { CartPage } from './pages/CartPage';
 import { DesignServicePage } from './pages/DesignServicePage';
@@ -18,6 +19,9 @@ import { ProPage } from './pages/ProPage';
 import { ShopPage } from './pages/ShopPage';
 import { useHashRoute } from './router';
 import { type DemoAccount, type DemoId, getDemoAccount, setDemoAccount, setIdentity } from './storage';
+
+const STOREFRONT_ROUTES = new Set(['', 'shop', 'design', 'collections', 'measure', 'design-service',
+  'quick-order', 'cart', 'installers', 'financing', 'pro']);
 
 export function App() {
   const route = useHashRoute();
@@ -127,6 +131,7 @@ export function App() {
       >
         Skip to content
       </a>
+      {STOREFRONT_ROUTES.has(section) && <StorefrontBanner />}
       <Header current={section} account={account} me={me} onAccountChange={changeAccount}
         onSignOut={async () => { await api.logout().catch(() => undefined); await refreshIdentity(); window.location.hash = '#/'; }} />
       {/* Remount the page when the demo account changes so data is reloaded for that identity. */}
