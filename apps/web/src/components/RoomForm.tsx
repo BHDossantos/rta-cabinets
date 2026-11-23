@@ -60,7 +60,11 @@ export function RoomForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
-    if (!valid || w.mm === null || d.mm === null) return;
+    if (!valid || w.mm === null || d.mm === null) {
+      const field = w.error ? 'rf-width' : d.error ? 'rf-depth' : c.error ? 'rf-ceiling' : null;
+      if (field) document.getElementById(field)?.focus();
+      return;
+    }
     const room = {
       id: initial?.room.id ?? 'room1',
       name,
@@ -83,6 +87,18 @@ export function RoomForm({
     <form className="room-form card" onSubmit={submit} noValidate>
       <h2>Step 1: Room measurements</h2>
       <p className="muted">Enter the inside dimensions of a rectangular room, wall to wall. Walls are numbered w1 to w4 counter-clockwise from the corner where w1 starts.</p>
+
+      {!initial && type === 'kitchen' && (
+        <div className="planner-example">
+          <button type="button" className="btn btn-secondary" onClick={() => {
+            setWidth(lengthFieldValue(inchesToMm(144), unit));
+            setDepth(lengthFieldValue(inchesToMm(120), unit));
+            setSource('unverified');
+            setTouched(false);
+          }}>Use example kitchen dimensions</button>
+          <p className="small muted">Try a 12 × 10 ft room. These are example dimensions, not measurements of your kitchen.</p>
+        </div>
+      )}
 
       <div className="form-grid">
         <div className="field">
@@ -139,6 +155,7 @@ export function RoomForm({
         </select>
       </div>
 
+      {touched && !valid && <p className="field-error" role="alert">Check the room dimensions below their fields to continue.</p>}
       {outlineProblems.length > 0 && <Notice tone="error" title="Room outline problem">{outlineProblems.join('; ')}</Notice>}
       {initial && initial.instances.length > 0 && (
         <Notice tone="info">Cabinets you already placed stay where they are; changing the room re-runs all checks rather than stretching cabinets.</Notice>

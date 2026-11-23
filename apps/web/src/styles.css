@@ -354,8 +354,8 @@ textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px soli
 .quote-steps li { background: #fff; color: #2d2520; padding: 17px; display: flex; gap: 14px; border-radius: 4px; align-items: center; }
 .quote-steps li > span { color: #ad4000; font-weight: 800; font-size: 13px; }
 .quote-steps small { display: block; color: #666; margin-top: 3px; }
-.quote-cta { width: 100%; background: #2b1b14; color: #fff; border-color: #2b1b14; padding: 16px; }
-.quote-cta:hover { color: #fff; background: #111; }
+.quote-cta { width: 100%; background: var(--orange-dark); color: var(--white); border-color: var(--orange-dark); padding: 16px; }
+.quote-cta:hover { color: var(--white); background: #943a00; }
 .kitchen-quote .quote-disclaimer { font-size: 12px; margin: 15px 0 0; color: #251000; }
 .kitchen-paths { display: grid; grid-template-columns: repeat(3,1fr); gap: 28px; padding-top: 48px; }
 .kitchen-path { border-radius: 4px; overflow: hidden; }
@@ -378,3 +378,6 @@ textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px soli
 @media(max-width: 850px) { .kitchen-hero-grid { gap: 28px; padding-top: 44px; padding-bottom: 44px; } .kitchen-quote { padding: 24px; } .kitchen-paths { gap: 15px; } .kitchen-path-heading { padding: 17px; min-height: 155px; } }
 @media(max-width: 650px) { .kitchen-hero-grid { grid-template-columns: 1fr; } .kitchen-intro h1 { font-size: 40px; } .kitchen-actions { max-width: none; } .kitchen-hero::after { background: #ffffffd9; } .kitchen-paths { grid-template-columns: 1fr; padding-top: 28px; gap: 24px; } .kitchen-path-heading { min-height: 0; } .kitchen-collections { padding-top: 48px; padding-bottom: 48px; } .kitchen-resource-links { flex-direction: column; gap: 16px; } }
 @media(prefers-reduced-motion: reduce) { .kitchen-style { transition: none; } }
+
+.planner-example, .plan-measurement { background: #fff4e9; border: 1px solid #ebbd99; border-radius: var(--radius); padding: var(--space-3); margin: var(--space-3) 0; }
+.planner-example p { margin: var(--space-2) 0 0; }

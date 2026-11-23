@@ -214,7 +214,8 @@ export function PlanView({
         const sev = issues?.get(inst.id);
         const selected = selectedId === inst.id;
         const isWall = sku.mounting === 'wall';
-        const label = `Cabinet ${inst.id}, ${sku.code}, on wall ${wall.id} at ${formatLength(offset, unit)} from wall start${sev ? `, ${SEVERITY_LABEL[sev]}` : ''}${selected ? ', selected' : ''}`;
+        const dimensions = `${formatLength(sku.dimensions.widthMm, unit)} wide × ${formatLength(sku.dimensions.depthMm, unit)} deep`;
+        const label = `Cabinet ${inst.id}, ${sku.code}, on wall ${wall.id} at ${formatLength(offset, unit)} from wall start, ${dimensions}${sev ? `, ${SEVERITY_LABEL[sev]}` : ''}${selected ? ', selected' : ''}`;
         return (
           <g
             key={inst.id}
@@ -229,6 +230,7 @@ export function PlanView({
             onPointerCancel={onPointerUp}
             onKeyDown={(e) => onKey(e, inst.id)}
           >
+            <title>{label}</title>
             <polygon points={pts(quad)} className="plan-item-shape" strokeWidth={fs * (selected ? 0.3 : 0.12)} strokeDasharray={isWall ? `${fs * 0.5} ${fs * 0.3}` : undefined} />
             {sev === 'blocker' && <polygon points={pts(quad)} fill="url(#hatch-blocker)" opacity={0.35} pointerEvents="none" />}
             <text x={c.x} y={c.y - fs * 0.35} fontSize={fs * 0.8} textAnchor="middle" className="plan-item-label" pointerEvents="none">
