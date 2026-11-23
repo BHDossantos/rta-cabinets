@@ -33,6 +33,7 @@ export interface CartView {
   lines: CartLine[];
   expansion?: DesignExpansion;
   comparison?: CartComparison;
+  salesReviewReady?: boolean;
   updatedAt: string;
   quote: Quote;
 }
@@ -206,11 +207,13 @@ export const api = {
   myOrders: () => request<{ orders: MyOrder[] }>('GET', '/api/me/orders'),
   myDesignRequests: () => request<{ requests: DesignRequestView[] }>('GET', '/api/me/design-requests'),
   createDesignRequest: (body: DesignRequestInput) => request<DesignRequestView>('POST', '/api/design-requests', body),
+  designReviewPlan: (id: string) =>
+    request<{ revision: number; document: DesignDocument }>('GET', `/api/design-requests/${encodeURIComponent(id)}/review-plan`),
   designQueue: () => request<{ requests: DesignRequestView[] }>('GET', '/api/design-requests'),
   designRequestMessage: (id: string, text: string) =>
     request<DesignRequestView>('POST', `/api/design-requests/${encodeURIComponent(id)}/messages`, { text }),
-  designRequestTransition: (id: string, to: string, reason?: string) =>
-    request<DesignRequestView>('POST', `/api/design-requests/${encodeURIComponent(id)}/transition`, { to, reason }),
+  designRequestTransition: (id: string, to: string, reason?: string, fitChecks?: Record<string, boolean>) =>
+    request<DesignRequestView>('POST', `/api/design-requests/${encodeURIComponent(id)}/transition`, { to, reason, fitChecks }),
 
   getOrder: (id: string) => request<OrderView>('GET', `/api/orders/${encodeURIComponent(id)}`),
 
