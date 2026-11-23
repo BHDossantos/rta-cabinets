@@ -89,6 +89,7 @@ export interface DesignRequest {
   phone?: string;
   notes: string;
   assignedTo?: string;
+  fitReview?: { revisionHash: string; by: string; at: string };
   history: TransitionRecord<DesignRequestState>[];
   messages: { from: 'customer' | 'designer'; authorId: string; text: string; at: string }[];
   createdAt: string;

@@ -163,7 +163,17 @@ export function createApp(opts: AppOptions = {}) {
       lines, entitlement: ent, shipping: NON_RETAIL_SHIPPING, designRevisionId, now: now(), calculationId: store.id('calc'),
     });
 
-  const cartView = (cart: Cart) => ({ ...cart, quote: quoteForLines(cart.lines, entitlementOf(store.users.get(cart.ownerId))) });
+  const salesReviewReady = (cart: Cart) => {
+    if (!cart.projectId) return true;
+    const latest = store.projects.get(cart.projectId)?.revisions.at(-1);
+    return !!latest && latest.number === cart.revisionNumber && latest.contentHash === cart.contentHash
+      && !!cart.comparison?.matchesDesign
+      && [...store.designRequests.values()].some((r) =>
+        r.ownerId === cart.ownerId && r.projectId === cart.projectId && r.revisionNumber === latest.number
+        && r.fitReview?.revisionHash === latest.contentHash
+        && ['customer_review', 'approved', 'converted'].includes(r.state));
+  };
+  const cartView = (cart: Cart) => ({ ...cart, salesReviewReady: salesReviewReady(cart), quote: quoteForLines(cart.lines, entitlementOf(store.users.get(cart.ownerId))) });
 
   /**
    * Homeowner editing window (D02 proposed default, configurable): the clock starts at
@@ -571,6 +581,9 @@ export function createApp(opts: AppOptions = {}) {
       if (cart.comparison?.incompleteSystems.length && !body.acknowledgeIncomplete) {
         throw new DomainError('conflict', 'Cart is missing required components', { incompleteSystems: cart.comparison.incompleteSystems });
       }
+      if (!salesReviewReady(cart)) {
+        throw new DomainError('gate_failed', 'A salesperson must review this exact design revision and cabinet list before an order can be placed');
+      }
       const ent = entitlementOf(principal(ctx).user);
       const shipping = { status: 'quoted' as const, amount: dollars(100), description: 'Synthetic flat freight (fixture)' };
       const quote = priceQuote(store.catalog, store.priceBook, store.policy, {
@@ -857,6 +870,16 @@ export function createApp(opts: AppOptions = {}) {
     return designRequestView(r, staff);
   });
 
+  // Staff can inspect only the attached revision, not the rest of the customer's project.
+  router.on('GET', '/api/design-requests/:id/review-plan', (ctx) => {
+    requireRole(ctx, 'internal_designer', 'admin');
+    const { r } = loadDesignRequest(ctx, ctx.params.id!);
+    const project = r.projectId ? store.projects.get(r.projectId) : undefined;
+    assert(project && r.revisionNumber, 'not_found', 'No attached design to review');
+    const revision = getRevision(project, r.revisionNumber);
+    return { revision: revision.number, document: revision.document };
+  });
+
   /** Clarifications live in the request record, not in email (spec 11, step 2). */
   router.on('POST', '/api/design-requests/:id/messages', (ctx) => {
     const { r, user, staff } = loadDesignRequest(ctx, ctx.params.id!);
@@ -874,12 +897,22 @@ export function createApp(opts: AppOptions = {}) {
   /** Staff workflow: assign, request information, design, send for review (state machine enforced). */
   router.on('POST', '/api/design-requests/:id/transition', (ctx) => {
     const { r, user, staff } = loadDesignRequest(ctx, ctx.params.id!);
-    const b = ctx.body as { to?: DesignRequestState; reason?: string; assignTo?: string };
+    const b = ctx.body as { to?: DesignRequestState; reason?: string; assignTo?: string; fitChecks?: Record<string, boolean> };
     const to = b.to as DesignRequestState;
     const customerAllowed: DesignRequestState[] = ['withdrawn'];
     if (!staff && !customerAllowed.includes(to)) throw new DomainError('forbidden', 'Only the design team can make this change');
     if (to === 'needs_information') assert(!!b.reason?.trim(), 'validation', 'Say what information is needed');
     const record = transition(designRequestMachine, r.state, to, user.id, now(), b.reason);
+    if (to === 'customer_review' && r.projectId) {
+      const latest = store.projects.get(r.projectId)?.revisions.at(-1);
+      assert(latest && latest.number === r.revisionNumber, 'conflict', 'A newer revision exists. Request review for the current design.');
+      assert(['wallClearance', 'doorSwing', 'windowInterference'].every((key) => b.fitChecks?.[key] === true),
+        'validation', 'Confirm wall clearances, door swings and window interference before returning the design');
+      const review = validateDesign(latest.document, store.catalog, { tradeEntitled: entitlementOf(store.users.get(r.ownerId)).proOnlySkus });
+      assert(review.counts.blocker === 0 && latest.document.instances.length > 0, 'gate_failed', 'Resolve layout blockers and include cabinets before completing review');
+      r.fitReview = { revisionHash: latest.contentHash, by: user.id, at: now().toISOString() };
+    }
+    if (to === 'in_design') delete r.fitReview;
     r.history.push(record);
     r.state = to;
     if (to === 'assigned') r.assignedTo = b.assignTo ?? user.id;

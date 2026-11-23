@@ -175,7 +175,9 @@ function CartDetail({ cart, account, onChange }: { cart: CartView; account: Demo
 
 function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAccount; disabled: boolean }) {
   const [acceptedTotal, setAcceptedTotal] = useState(cart.quote.total.amount);
-  const [checkoutEnabled, setCheckoutEnabled] = useState(false);
+  const [demoCheckoutAvailable, setCheckoutEnabled] = useState(false);
+  const needsReview = !!cart.projectId && cart.salesReviewReady !== true;
+  const checkoutEnabled = demoCheckoutAvailable && !needsReview;
   useEffect(() => {
     let active = true;
     api.health().then((h) => { if (active) setCheckoutEnabled(h.checkoutEnabled === true); })
@@ -231,7 +233,10 @@ function Checkout({ cart, account, disabled }: { cart: CartView; account: DemoAc
   return (
     <section className="card checkout" aria-labelledby="checkout-h">
       <h2 id="checkout-h">Checkout</h2>
-      {!checkoutEnabled && <Notice tone="warning" title="Online ordering unavailable">
+      {needsReview && <Notice tone="warning" title="Salesperson review required">
+        Return to the planner and request review after the estimate. An edited plan or cabinet list must be reviewed again before ordering.
+      </Notice>}
+      {!demoCheckoutAvailable && <Notice tone="warning" title="Online ordering unavailable">
         Keep your saved design and estimate, and contact us for a confirmed quote. No payment is being taken.
       </Notice>}
       <p>

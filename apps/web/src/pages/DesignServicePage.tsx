@@ -31,7 +31,8 @@ const EMPTY: DesignRequestInput = {
 };
 
 export function DesignServicePage({ account }: { account: DemoAccount }) {
-  const [form, setForm] = useState<DesignRequestInput>(EMPTY);
+  const reviewMode = new URLSearchParams(window.location.hash.split('?')[1]).get('review') === '1';
+  const [form, setForm] = useState<DesignRequestInput>(() => reviewMode ? { ...EMPTY, services: ['review_my_design'] } : EMPTY);
   const [attachProject, setAttachProject] = useState(true);
   const projectId = getProjectId();
   const [missing, setMissing] = useState<string[]>([]);
@@ -43,6 +44,10 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (reviewMode && (!projectId || !attachProject)) {
+      setState({ busy: false, error: 'Attach your saved plan to request a salesperson review.', sent: null });
+      return;
+    }
     // Show missing requirements before submission (spec 11, request form).
     const m: string[] = [];
     if (!/^\d{5}$/.test(form.zip)) m.push('zip');
@@ -67,7 +72,10 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
 
   return (
     <div className="container page">
-      <h1>Free design service</h1>
+      <h1>{reviewMode ? 'Salesperson review' : 'Free design service'}</h1>
+      {reviewMode && <Notice tone="info" title="Review only, not an order">
+        Your salesperson checks wall clearances, door swings and windows against the saved plan. No order is placed and no payment is taken. {(!projectId && signedIn) && <a href="#/design">Return to your design</a>}
+      </Notice>}
       <p className="lead">
         Send us your room details and a designer lays out a kitchen using the cabinets we actually make, then sends you a plan and
         an itemized price to review.
@@ -96,7 +104,8 @@ export function DesignServicePage({ account }: { account: DemoAccount }) {
       </ol>
 
       {state.sent ? (
-        <Notice tone="success" title={`Request ${state.sent.id} received`}>
+        <Notice tone="success" title={`Request ${state.sent.id} recorded`}>
+          <p>The request is recorded in this app. This does not confirm assignment or a response date. Nothing has been ordered or charged.</p>
           <p>Status: {DESIGN_REQUEST_LABEL[state.sent.state] ?? state.sent.state}. You can follow it and reply to the designer from <a href="#/account">your account</a>.</p>
         </Notice>
       ) : !signedIn ? (

@@ -122,6 +122,25 @@ describe('design -> cart -> checkout -> payment -> release -> staged shipment', 
     expect((await call('POST', '/api/checkout-sessions', { cartId: cart.id, acceptedTotalCents: 1 }, { ...H, 'idempotency-key': 'key-incomplete-1' })).status).toBe(409);
     await call('PATCH', `/api/carts/${cart.id}`, { lines: cart.lines }, H);
 
+    // Only staff can attest the three fit checks on this exact project revision.
+    const submit = (await call('POST', '/api/design-requests', {
+      projectId: project.id, roomType: 'kitchen', zip: '33101', timeline: 'Exploring',
+      budgetRange: 'Not sure', services: ['review_my_design'], contactPreference: 'email',
+    }, H)).body;
+    const transitionPath = `/api/design-requests/${submit.id}/transition`;
+    const staff = as('u_designer');
+    const review = { to: 'customer_review', fitChecks: { wallClearance: true, doorSwing: true, windowInterference: true } };
+    await call('POST', transitionPath, { to: 'assigned' }, staff);
+    await call('POST', transitionPath, { to: 'in_design' }, staff);
+    expect((await call('GET', `/api/design-requests/${submit.id}/review-plan`, undefined, H)).status).toBe(403);
+    expect((await call('GET', `/api/design-requests/${submit.id}/review-plan`, undefined, staff)).body.revision).toBe(1);
+    expect((await call('POST', transitionPath, review, H)).status).toBe(403);
+    expect((await call('POST', transitionPath, { to: 'customer_review' }, staff)).status).toBe(422);
+    const held = await call('POST', '/api/checkout-sessions', { cartId: cart.id, acceptedTotalCents: 1 }, { ...H, 'idempotency-key': 'key-needs-staff-review' });
+    expect(held.body.error.message).toContain('A salesperson must review');
+    expect((await call('POST', transitionPath, review, staff)).body.state).toBe('customer_review');
+    expect((await call('GET', `/api/carts/${cart.id}`, undefined, H)).body.salesReviewReady).toBe(true);
+
     // Total must be accepted explicitly; the server tells the client the real total.
     const needAccept = await call('POST', '/api/checkout-sessions', { cartId: cart.id, acceptedTotalCents: 1 }, { ...H, 'idempotency-key': 'key-accept-1' });
     expect(needAccept.status).toBe(409);
@@ -168,6 +187,14 @@ describe('design -> cart -> checkout -> payment -> release -> staged shipment', 
     const after = (await call('GET', `/api/orders/${orderId}`, undefined, H)).body;
     expect(after.fulfillment.overall).toBe('partially_delivered');
     expect(after.fulfillment.groups.find((g: any) => g.stage === 'B').status).toBe('pending');
+
+    // Revising the design after review invalidates checkout for that old cart.
+    const revised = exampleA();
+    revised.instances[0]!.offsetMm += 1;
+    const update = await call('POST', `/api/projects/${project.id}/revisions`, { document: revised, baseRevision: 1 }, H);
+    // Assert via the public cart state as well as checkout's server-side revision guard.
+    expect(update.status).toBe(201);
+    expect((await call('GET', `/api/carts/${cart.id}`, undefined, H)).body.salesReviewReady).toBe(false);
 
     // Other customers cannot see the order.
     expect((await call('GET', `/api/orders/${orderId}`, undefined, as('u_home2'))).status).toBe(404);

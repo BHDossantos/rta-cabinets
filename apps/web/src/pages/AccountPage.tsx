@@ -245,6 +245,13 @@ const CUSTOMER_CAN_WITHDRAW = ['draft', 'submitted', 'assigned', 'needs_informat
 
 function RequestCard({ request: r, staff, onChanged }: { request: DesignRequestView; staff: boolean; onChanged: () => void }) {
   const [text, setText] = useState('');
+  const [fitChecks, setFitChecks] = useState({ wallClearance: false, doorSwing: false, windowInterference: false });
+  const [plan, setPlan] = useState<Awaited<ReturnType<typeof api.designReviewPlan>> | null>(null);
+  useEffect(() => {
+    setFitChecks({ wallClearance: false, doorSwing: false, windowInterference: false });
+    setPlan(null);
+  }, [r.id, r.state, r.revisionNumber]);
+  const fitReviewNeeded = !!r.projectId && staff && r.state === 'in_design';
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -269,9 +276,10 @@ function RequestCard({ request: r, staff, onChanged }: { request: DesignRequestV
       setError('Type the question or reason in the message box first.');
       return;
     }
-    void run(async () => { await api.designRequestTransition(r.id, a.to, a.needsReason ? text.trim() : undefined); setText(''); });
+    void run(async () => { await api.designRequestTransition(r.id, a.to, a.needsReason ? text.trim() : undefined, a.to === 'customer_review' ? fitChecks : undefined); setText(''); });
   };
 
+  const openReviewPlan = () => void run(async () => setPlan(await api.designReviewPlan(r.id)));
   const waitingOnCustomer = r.state === 'needs_information' || r.state === 'customer_review';
 
   return (
@@ -302,11 +310,26 @@ function RequestCard({ request: r, staff, onChanged }: { request: DesignRequestV
             <label htmlFor={`msg-${r.id}`}>{staff ? 'Message to the customer' : 'Reply to the designer'}</label>
             <textarea id={`msg-${r.id}`} rows={2} value={text} onChange={(e) => setText(e.target.value)} />
           </div>
+          {fitReviewNeeded && <fieldset>
+            <button type="button" className="btn btn-secondary btn-sm" disabled={busy} onClick={openReviewPlan}>Open attached plan data</button>
+            {plan && <details open><summary>Saved revision {plan.revision} · dimensions in mm</summary>
+              <pre className="review-plan-data" tabIndex={0}>{JSON.stringify(plan.document, null, 2)}</pre>
+            </details>}
+            <legend>Confirm against the exact saved design revision</legend>
+            {([
+              ['wallClearance', 'Wall and cabinet clearances'],
+              ['doorSwing', 'Door and appliance swings'],
+              ['windowInterference', 'Window interference and opening clearance'],
+            ] as const).map(([key, label]) => (
+              <label className="check" key={key}><input type="checkbox" checked={fitChecks[key]}
+                onChange={(e) => setFitChecks((prev) => ({ ...prev, [key]: e.target.checked }))} /> {label} checked</label>
+            ))}
+          </fieldset>}
           {error && <p className="field-error" role="alert">⛔ {error}</p>}
           <div className="btn-row">
             <button type="submit" className="btn btn-secondary btn-sm" disabled={busy || !text.trim()}>Send message</button>
             {staff && (STAFF_ACTIONS[r.state] ?? []).map((a) => (
-              <button key={a.to} type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => act(a)}>{a.label}</button>
+              <button key={a.to} type="button" className="btn btn-primary btn-sm" disabled={busy || (fitReviewNeeded && a.to === 'customer_review' && (!plan || !Object.values(fitChecks).every(Boolean)))} onClick={() => act(a)}>{a.label}</button>
             ))}
             {!staff && CUSTOMER_CAN_WITHDRAW.includes(r.state) && (
               <button type="button" className="btn btn-ghost btn-sm" disabled={busy}

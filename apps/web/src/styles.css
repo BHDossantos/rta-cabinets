@@ -381,3 +381,5 @@ textarea { font: inherit; width: 100%; padding: var(--space-2); border: 1px soli
 
 .planner-example, .plan-measurement { background: #fff4e9; border: 1px solid #ebbd99; border-radius: var(--radius); padding: var(--space-3); margin: var(--space-3) 0; }
 .planner-example p { margin: var(--space-2) 0 0; }
+
+.review-plan-data { max-height: 18rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

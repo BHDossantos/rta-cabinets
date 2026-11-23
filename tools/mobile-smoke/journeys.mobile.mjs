@@ -86,4 +86,8 @@ test('guest builds a measured kitchen and reaches itemized estimate', async ({ p
   await page.getByRole('button', { name: 'Continue to estimate' }).click();
   await expect(page.getByRole('heading', { name: 'Step 3: Itemized estimate' })).toBeVisible();
   await expect(page.getByRole('table', { name: 'Itemized design estimate' })).toBeVisible();
+  await page.getByRole('button', { name: 'Prepare salesperson review' }).click();
+  await expect(page.getByRole('heading', { name: 'Salesperson review' })).toBeVisible();
+  await expect(page.getByText('Review only, not an order')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Send design request' })).toHaveCount(0);
 });
