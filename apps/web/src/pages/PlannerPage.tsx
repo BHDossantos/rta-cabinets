@@ -453,7 +453,7 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
                 <div className="editor-grid">
                   <div className="canvas-col">
                     <section className="card" aria-labelledby="plan-h">
-                      <h2 id="plan-h" className="h3">Plan view</h2>
+                      <h2 id="plan-h" className="h3">Measured 2D plan</h2>
                       <div className="plan-wrap">
                         <PlanView doc={viewDoc} skus={skus} unit={unit} selectedId={selectedId} issues={issues} preview={null}
                           onSelect={select}
@@ -466,8 +466,18 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
                           onDelete={deleteInstance}
                         />
                       </div>
+                      {selectedId && (() => {
+                        const instance = viewDoc.instances.find((item) => item.id === selectedId);
+                        const sku = instance && skus.get(instance.skuCode);
+                        if (!sku || !instance) return null;
+                        const { widthMm, depthMm, heightMm } = sku.dimensions;
+                        return <p className="plan-measurement" role="status">
+                          <strong>{sku.code}</strong> · {formatLength(widthMm, unit)} W × {formatLength(depthMm, unit)} D × {formatLength(heightMm, unit)} H
+                          {' · '}{instance.wallId} from {formatLength(instance.offsetMm, unit)}
+                        </p>;
+                      })()}
                       <p className="small muted">
-                        Dashed outlines are wall-mounted units. Hatched units have a blocker. Drag a cabinet along its wall, or focus it and use the
+                        Cabinet footprints use catalog widths and depths. Select a cabinet to see its exact dimensions. Dashed outlines are wall-mounted units. Hatched units have a blocker. Drag a cabinet along its wall, or focus it and use the
                         arrow keys (1 in steps, Shift for 1/8 in). Every action is also available in the table below.
                       </p>
                     </section>
@@ -487,7 +497,8 @@ export function PlannerPage({ account }: { account: DemoAccount }) {
                   <aside className="side-col">
                     <AddCabinetForm doc={doc} skus={skus} items={items} unit={unit} onAdd={(inst) => {
                       commit((d) => ({ ...d, instances: [...d.instances, inst] }));
-                      select(inst.id);
+                      setSelectedId(inst.id);
+                      setElevWall(inst.wallId);
                     }} />
                     <section className="card">
                       <ValidationPanel report={report} source="preview" selectedId={selectedId} onSelectObject={select} />

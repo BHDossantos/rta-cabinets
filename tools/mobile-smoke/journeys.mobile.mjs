@@ -68,3 +68,22 @@ test('reference storefront fits both viewports and links to the real planner', a
   await page.goBack();
   await expect(page.getByRole('heading', { level: 1 })).toContainText('Your dream kitchen.');
 });
+
+test('guest builds a measured kitchen and reaches itemized estimate', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: 'Open the kitchen planner' }).click();
+  await page.getByRole('button', { name: 'Continue to layout' }).click();
+  await expect(page.locator('#rf-width')).toBeFocused();
+  await page.getByRole('button', { name: 'Use example kitchen dimensions' }).click();
+  await expect(page.locator('#rf-source')).toHaveValue('unverified');
+  await page.getByRole('button', { name: 'Continue to layout' }).click();
+  await expect(page.getByRole('heading', { name: 'Measured 2D plan' })).toBeVisible();
+  await page.getByRole('button', { name: 'Add cabinet', exact: true }).click();
+  const plan = page.getByRole('group', { name: 'Room plan, top-down view' });
+  await expect(plan.getByRole('button', { name: /wide × .*deep.*selected/ })).toBeVisible();
+  await expect(page.locator('.plan-measurement')).toContainText(/ W × .* D × .* H/);
+  await fitsPhone(page);
+  await page.getByRole('button', { name: 'Continue to estimate' }).click();
+  await expect(page.getByRole('heading', { name: 'Step 3: Itemized estimate' })).toBeVisible();
+  await expect(page.getByRole('table', { name: 'Itemized design estimate' })).toBeVisible();
+});
