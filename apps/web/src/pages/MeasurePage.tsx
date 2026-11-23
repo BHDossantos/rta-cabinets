@@ -1,3 +1,5 @@
+import { MeasurementWorksheet } from '../components/MeasurementWorksheet';
+
 /**
  * Measuring guide (spec section 4 page inventory). Written for this site; the
  * printable worksheet mirrors the fields the planner and design service ask for.
@@ -65,19 +67,7 @@ export function MeasurePage() {
           </li>
         ))}
       </ol>
-      <section className="card worksheet" aria-labelledby="ws-h">
-        <h2 id="ws-h" className="h3">Worksheet</h2>
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Item</th><th>From starting corner</th><th>Width / length</th><th>Above floor</th><th>Height</th></tr></thead>
-            <tbody>
-              {['Wall 1', 'Wall 2', 'Wall 3', 'Wall 4', 'Ceiling height', 'Door', 'Window', 'Sink drain center', 'Range', 'Refrigerator', 'Dishwasher'].map((r) => (
-                <tr key={r}><th scope="row">{r}</th><td /><td /><td /><td /></tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      <MeasurementWorksheet />
     </div>
   );
 }

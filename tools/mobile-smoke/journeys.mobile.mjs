@@ -123,3 +123,18 @@ test('neutral storefront banner follows shopping routes and opens the measuring 
   await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
   await expect(banner).toHaveCount(0);
 });
+
+
+test('measurement worksheet keeps entered fractions in the printed handoff', async ({ page }) => {
+  await page.goto('/#/measure');
+  const wall = page.getByRole('group', { name: 'Wall 1', exact: true });
+  await wall.getByRole('textbox', { name: 'Width or length (inches)' }).fill('144 3/8');
+  const windowMeasurements = page.getByRole('group', { name: 'Window', exact: true });
+  await windowMeasurements.getByRole('textbox', { name: 'Above floor (inches)' }).fill('33 1/2');
+  await fitsPhone(page);
+  await page.emulateMedia({ media: 'print' });
+  const printed = page.getByRole('table', { name: 'Customer notes in inches; not verified dimensions.' });
+  await expect(printed.getByRole('row', { name: /Wall 1/ })).toContainText('144 3/8');
+  await expect(printed.getByRole('row', { name: /Window/ })).toContainText('33 1/2');
+  await expect(wall).not.toBeVisible();
+});

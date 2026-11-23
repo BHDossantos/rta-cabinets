@@ -1,0 +1,5 @@
+.worksheet-print-values { display: none; }
+@media print {
+  .worksheet-print-values { display: table; }
+  .worksheet-print-values td { min-width: 3rem; min-height: 1.4rem; overflow-wrap: anywhere; }
+}
