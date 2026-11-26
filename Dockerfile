@@ -1,5 +1,5 @@
 # One container serves the web app and the API.
-FROM node:22-slim AS build
+FROM node:25-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY packages/core/package.json packages/core/
@@ -9,7 +9,7 @@ RUN npm ci
 COPY . .
 RUN npm run build -w @rta/web
 
-FROM node:22-slim
+FROM node:25-slim
 WORKDIR /app
 ENV NODE_ENV=production PORT=8080
 COPY --from=build /app /app
